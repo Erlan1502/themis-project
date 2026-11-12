@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Themis Project :: Цифровой пандус и аудит академической недооцененности</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+              900: '#4c1d95',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .code-font { font-family: 'JetBrains Mono', monospace; }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- =================================================================== -->
+  <!-- NAVBAR -->
+  <!-- =================================================================== -->
+  <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-violet-500/30">
+          <span class="text-xl font-black text-white">Θ</span>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold tracking-tight text-white">THEMIS PROJECT</h1>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-mono border border-violet-500/30">v2.0</span>
+          </div>
+          <p class="text-xs text-slate-400">Inclusive Academic Discrepancy Audit & Socratic Scaffolding</p>
+        </div>
+      </div>
+
+      <!-- Navigation Switcher -->
+      <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+        <button id="btn-tab-student" onclick="switchView('student')" class="px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 bg-violet-600 text-white shadow-md">
+          🎓 Студент: Цифровой пандус
+        </button>
+        <button id="btn-tab-professor" onclick="switchView('professor')" class="px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 text-slate-400 hover:text-white">
+          📊 Консоль преподавателя
+        </button>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center space-x-2">
+        <button onclick="resetDemoData()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center space-x-1.5">
+          <span>🔄</span>
+          <span>Сбросить демо</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- =================================================================== -->
+  <!-- MAIN CONTENT CONTAINER -->
+  <!-- =================================================================== -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ================================================================= -->
+    <!-- VIEW 1: STUDENT DIGITAL RAMP (ЦИФРОВОЙ ПАНДУС) -->
+    <!-- ================================================================= -->
+    <div id="view-student" class="space-y-6">
+      
+      <!-- Curb-Cut Constitutional Banner -->
+      <div class="bg-gradient-to-r from-violet-950/70 via-indigo-950/60 to-slate-900 border border-violet-500/30 rounded-2xl p-4 shadow-xl flex items-start space-x-4">
+        <div class="text-2xl mt-0.5">♿</div>
+        <div class="flex-1">
+          <div class="flex items-center space-x-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-violet-400 font-mono">Принцип пандуса (UDL Optional Affordance)</span>
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-xs text-emerald-400 font-medium">Окно рефлексии открыто</span>
+          </div>
+          <p class="text-sm font-medium text-slate-200 mt-1">
+            Добровольная сессия Themis Project. Не снижает вашу очную оценку и служит исключительно для глубокого раскрытия вашего понимания без публичного стресса.
+          </p>
+          <div class="text-xs text-slate-400 mt-2 flex flex-wrap gap-4">
+            <span>🛡️ <strong class="text-slate-300">Zero Downward Penalty:</strong> Оценка преподавателя неприкосновенна</span>
+            <span>💡 <strong class="text-slate-300">Non-Credit Signal:</strong> Диагностический аналитический статус</span>
+            <span>⏱️ Осталось времени: <strong id="timer-display" class="font-mono text-amber-400">44:59</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dialogue Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left: Chat Panel (2 cols) -->
+        <div class="lg:col-span-2 bg-slate-950 rounded-2xl border border-slate-800 flex flex-col h-[640px] shadow-2xl overflow-hidden">
+          
+          <!-- Chat Header -->
+          <div class="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div class="w-8 h-8 rounded-lg bg-violet-600/20 text-violet-400 border border-violet-500/30 flex items-center justify-center font-bold">
+                Q
+              </div>
+              <div>
+                <h2 class="text-sm font-semibold text-white">Сократический тьютор (Qwen3.5-4B)</h2>
+                <p class="text-xs text-slate-400">Тема 05: Регуляризация и динамика Dropout</p>
+              </div>
+            </div>
+
+            <!-- Turn progress pill -->
+            <div class="flex items-center space-x-2">
+              <span class="text-xs text-slate-400 font-mono">Степень уверенности:</span>
+              <span id="badge-confidence" class="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                Шаг 0/3 (NO_SIGNAL)
+              </span>
+            </div>
+          </div>
+
+          <!-- Chat Messages Scroll Container -->
+          <div id="chat-messages" class="flex-1 p-4 overflow-y-auto custom-scrollbar space-y-4">
+            <!-- Initial Tutor message -->
+            <div class="flex items-start space-x-3">
+              <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
+                AI
+              </div>
+              <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
+                Привет! На лекции мы разобрали проблему переобучения в глубоких сетях. Подумай: почему обычное увеличение объема данных не всегда спасает от ко-адаптации признаков?
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick-Fill Demo Buttons Panel -->
+          <div class="px-4 py-2.5 bg-slate-900/80 border-t border-slate-800 flex items-center space-x-2 overflow-x-auto text-xs">
+            <span class="text-slate-400 font-medium shrink-0">⚡ Быстрый ввод (Студент К.):</span>
+            <button onclick="fillStudentMessage(1)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-violet-300 border border-slate-700 transition shrink-0">
+              1. Базовый шаг (SOLO 1)
+            </button>
+            <button onclick="fillStudentMessage(2)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-violet-300 border border-slate-700 transition shrink-0">
+              2. Механизм Dropout (SOLO 2)
+            </button>
+            <button onclick="fillStudentMessage(3)" class="px-2.5 py-1 rounded bg-violet-900/60 hover:bg-violet-800 text-violet-200 border border-violet-600 transition shrink-0 font-semibold">
+              3. Вопрос 3-го уровня (Синтез К.)
+            </button>
+          </div>
+
+          <!-- Input Box -->
+          <div class="p-4 bg-slate-900 border-t border-slate-800">
+            <div class="flex items-center space-x-2">
+              <div class="relative flex-1">
+                <textarea id="student-input" rows="2" 
+                  onpaste="handlePaste(event)"
+                  placeholder="Напишите ваши рассуждения по теме занятия (без спешки)..." 
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none font-sans"></textarea>
+              </div>
+              <button id="btn-send-message" onclick="sendStudentMessage()" class="h-12 px-5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-violet-600/30 transition flex items-center justify-center shrink-0">
+                <span>Отправить</span>
+              </button>
+            </div>
+            
+            <!-- Telemetry Indicator -->
+            <div class="flex items-center justify-between text-xs text-slate-500 mt-2 px-1">
+              <div class="flex items-center space-x-2" id="telemetry-status">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Телеметрия ввода: ручной естественный набор</span>
+              </div>
+              <div>
+                <span>Сессия: <strong class="font-mono text-slate-400">stud_aai_042 (Студент К.)</strong></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right: Progress & Socratic Scaffolding Info (1 col) -->
+        <div class="space-y-6">
+          
+          <!-- Student Card -->
+          <div class="bg-slate-950 rounded-2xl border border-slate-800 p-5 shadow-xl">
+            <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">Ваш академический профиль</h3>
+            <div class="flex items-center space-x-3 mb-4">
+              <div class="w-12 h-12 rounded-xl bg-violet-600/20 border border-violet-500/40 text-violet-300 flex items-center justify-center text-lg font-bold">
+                К.
+              </div>
+              <div>
+                <h4 class="text-sm font-bold text-white">Студент К. (stud_aai_042)</h4>
+                <p class="text-xs text-slate-400">Programming AI (prog_ai_2026)</p>
+              </div>
+            </div>
+            
+            <div class="space-y-2 border-t border-slate-800/80 pt-3 text-xs">
+              <div class="flex justify-between py-1">
+                <span class="text-slate-400">Очная оценка у доски ($G_{\text{prof}}$):</span>
+                <span class="font-bold text-white font-mono">70.0 / 100</span>
+              </div>
+              <div class="flex justify-between py-1">
+                <span class="text-slate-400">Статус в ведомости:</span>
+                <span class="text-emerald-400 font-semibold">Зафиксирована (не снижается)</span>
+              </div>
+              <div class="flex justify-between py-1">
+                <span class="text-slate-400">Диагностический статус ИИ:</span>
+                <span id="stud-diag-status" class="text-amber-400 font-semibold">В процессе диалога...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- SOLO Taxonomy Guide -->
+          <div class="bg-slate-950 rounded-2xl border border-slate-800 p-5 shadow-xl">
+            <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">Шкала когнитивной глубины (SOLO)</h3>
+            
+            <div class="space-y-3 text-xs">
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                <div class="flex items-center justify-between font-semibold text-slate-300">
+                  <span>Уровень 1: Surface</span>
+                  <span class="font-mono text-slate-400">p1</span>
+                </div>
+                <p class="text-slate-400 mt-1">Определения и воспроизведение фактов из конспекта.</p>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                <div class="flex items-center justify-between font-semibold text-sky-400">
+                  <span>Уровень 2: Relational</span>
+                  <span class="font-mono text-sky-400">p2</span>
+                </div>
+                <p class="text-slate-400 mt-1">Причинно-следственные связи и механизмы работы алгоритма.</p>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-violet-500/40 bg-violet-950/20">
+                <div class="flex items-center justify-between font-semibold text-violet-300">
+                  <span>Уровень 3: Extended Abstract</span>
+                  <span class="font-mono text-violet-300">p3 (+1.0 бонус)</span>
+                </div>
+                <p class="text-slate-400 mt-1">Синтез, экстремальные границы применимости и собственные гипотезы.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Topic Glossary -->
+          <div class="bg-slate-950 rounded-2xl border border-slate-800 p-5 shadow-xl">
+            <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-2">Глоссарий занятия</h3>
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">co-adaptation</span>
+              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">dropout</span>
+              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">model capacity</span>
+              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">underfitting</span>
+              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">inverted dropout</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- VIEW 2: PROFESSOR AUDIT CONSOLE (КОНСОЛЬ ПРЕПОДАВАТЕЛЯ) -->
+    <!-- ================================================================= -->
+    <div id="view-professor" class="space-y-6 hidden">
+      
+      <!-- Top Bar: Course Context -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950 border border-slate-800 p-4 rounded-2xl">
+        <div>
+          <div class="flex items-center space-x-2">
+            <h2 class="text-base font-bold text-white">Курс: Programming AI (prog_ai_2026)</h2>
+            <span class="px-2 py-0.5 rounded text-xs bg-indigo-500/20 text-indigo-300 font-mono border border-indigo-500/30">Занятие 05</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">Тема: Регуляризация и динамика Dropout (Undergrading Detection Engine)</p>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <button onclick="refreshDashboard()" class="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition">
+            <span>🔄</span>
+            <span>Обновить аналитику</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Cards (4 metrics) -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl">
+          <div class="text-xs text-slate-400 font-medium">Всего студентов потока</div>
+          <div class="text-2xl font-bold font-mono text-white mt-1" id="kpi-total">28</div>
+          <div class="text-xs text-slate-500 mt-1">Очный журнал сформирован</div>
+        </div>
+
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl">
+          <div class="text-xs text-slate-400 font-medium">Оценка без изменений (Opted-Out)</div>
+          <div class="text-2xl font-bold font-mono text-slate-300 mt-1" id="kpi-opted-out">16</div>
+          <div class="text-xs text-slate-500 mt-1">14 не заходили + 2 случайных</div>
+        </div>
+
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl">
+          <div class="text-xs text-slate-400 font-medium">Завершенных сессий ИИ</div>
+          <div class="text-2xl font-bold font-mono text-emerald-400 mt-1" id="kpi-completed">12</div>
+          <div class="text-xs text-slate-500 mt-1">Выборка для MAD и медианы</div>
+        </div>
+
+        <div class="bg-slate-950 border border-violet-500/40 bg-violet-950/20 rounded-2xl p-4 shadow-xl">
+          <div class="text-xs text-violet-300 font-medium">Критическое расхождение (Purple)</div>
+          <div class="text-2xl font-bold font-mono text-violet-300 mt-1" id="kpi-purple">1</div>
+          <div class="text-xs text-violet-400 mt-1">Студент К. (Z = +3.73σ)</div>
+        </div>
+
+      </div>
+
+      <!-- Main Analytical Dashboard: Chart & Evidence Card Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left 7 cols: Gaussian / Sigma Distribution Chart -->
+        <div class="lg:col-span-7 bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-2xl flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-sm font-bold text-white uppercase tracking-wider">Робастный коридор сигм потока (Δ⁺ = max(0, S_depth - G_prof))</h3>
+              <p class="text-xs text-slate-400 mt-0.5">Разделение естественного шума канала и аномалий скрытой одаренности</p>
+            </div>
+            <div class="text-xs font-mono px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-300">
+              σ_rob = <span id="dist-sigma">5.63</span>
+            </div>
+          </div>
+
+          <!-- Distribution Chart Container -->
+          <div class="relative flex-1 min-h-[280px]">
+            <canvas id="sigmaChart"></canvas>
+          </div>
+
+          <!-- Corridor Legend & Thresholds -->
+          <div class="grid grid-cols-4 gap-2 pt-4 mt-2 border-t border-slate-800 text-center text-xs">
+            <div class="p-2 rounded-lg bg-emerald-950/20 border border-emerald-500/20">
+              <div class="text-emerald-400 font-semibold">NORMAL</div>
+              <div class="text-slate-400 text-[11px]">&lt; +1.0σ (<span id="th-1s">8.13</span>)</div>
+              <div class="font-mono text-slate-200 mt-1 font-bold" id="cnt-green">9 студ.</div>
+            </div>
+            <div class="p-2 rounded-lg bg-amber-950/20 border border-amber-500/20">
+              <div class="text-amber-400 font-semibold">WATCHLIST</div>
+              <div class="text-slate-400 text-[11px]">+1σ .. +2σ (<span id="th-2s">13.77</span>)</div>
+              <div class="font-mono text-slate-200 mt-1 font-bold" id="cnt-yellow">2 студ.</div>
+            </div>
+            <div class="p-2 rounded-lg bg-rose-950/20 border border-rose-500/20">
+              <div class="text-rose-400 font-semibold">AUDIT TRIGGER</div>
+              <div class="text-slate-400 text-[11px]">+2σ .. +3σ (<span id="th-3s">19.40</span>)</div>
+              <div class="font-mono text-slate-200 mt-1 font-bold" id="cnt-red">0 студ.</div>
+            </div>
+            <div class="p-2 rounded-lg bg-violet-950/30 border border-violet-500/40">
+              <div class="text-violet-300 font-semibold">HIGH DISCREPANCY</div>
+              <div class="text-slate-400 text-[11px]">≥ +3.0σ (≥ 19.40)</div>
+              <div class="font-mono text-violet-300 mt-1 font-bold" id="cnt-purple">1 студ.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right 5 cols: AI Discrepancy Evidence Card -->
+        <div class="lg:col-span-5 bg-slate-950 border border-violet-500/40 rounded-2xl p-5 shadow-2xl flex flex-col relative overflow-hidden">
+          
+          <div class="absolute top-0 right-0 w-32 h-32 bg-violet-600/10 rounded-full blur-2xl pointer-events-none"></div>
+
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-lg">🟣</span>
+              <div>
+                <h3 class="text-sm font-bold text-white">ДОКАЗАТЕЛЬНАЯ КАРТОЧКА АУДИТА</h3>
+                <p class="text-xs text-violet-400 font-mono">Студент К. (stud_aai_042)</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/40">
+              +3.73σ (p &lt; 0.001)
+            </span>
+          </div>
+
+          <!-- Non-credit warning notice -->
+          <div class="bg-violet-950/40 border border-violet-500/30 rounded-xl p-3 text-xs text-violet-200 mb-4 leading-relaxed">
+            <strong>Диагностический сигнал:</strong> Оценка ИИ (93.5) не суммируется с очной ведомостью автоматически. Решение о пересмотре принимает исключительно преподаватель.
+          </div>
+
+          <!-- Comparison Metrics -->
+          <div class="grid grid-cols-3 gap-2 text-center text-xs mb-4">
+            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+              <div class="text-slate-400">Очная оценка</div>
+              <div class="text-lg font-bold font-mono text-slate-200 mt-0.5">70.0</div>
+            </div>
+            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+              <div class="text-slate-400">ИИ-глубина (S_depth)</div>
+              <div class="text-lg font-bold font-mono text-violet-400 mt-0.5">93.5</div>
+            </div>
+            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+              <div class="text-slate-400">Ректификация (Δ⁺)</div>
+              <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5">+23.5</div>
+            </div>
+          </div>
+
+          <!-- SOLO Probability Spectrum -->
+          <div class="mb-4">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="text-slate-300 font-semibold">Распределение SOLO: Extended Abstract (Ур. 3)</span>
+              <span class="font-mono text-violet-400">E[D²] = 7.85</span>
+            </div>
+            <!-- Multi-color bar -->
+            <div class="w-full h-3 rounded-full overflow-hidden flex bg-slate-900">
+              <div style="width: 5%" class="bg-slate-500" title="Surface: 5%"></div>
+              <div style="width: 15%" class="bg-sky-500" title="Relational: 15%"></div>
+              <div style="width: 80%" class="bg-violet-500" title="Extended Abstract: 80%"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-400 mt-1 font-mono">
+              <span>p1: 5%</span>
+              <span>p2: 15%</span>
+              <span class="text-violet-300 font-bold">p3: 80% (+1.0 Инициатива)</span>
+            </div>
+          </div>
+
+          <!-- Direct Quote Evidence -->
+          <div class="mb-4">
+            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Прямая цитата студента:</span>
+            <div class="mt-1.5 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs italic text-slate-200 leading-relaxed">
+              «Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?»
+            </div>
+          </div>
+
+          <!-- Mastered Concepts Badges -->
+          <div class="mb-4">
+            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Освоенные концепты (K_density = 1.0):</span>
+            <div class="flex flex-wrap gap-1 mt-1.5">
+              <span class="text-[11px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">co-adaptation</span>
+              <span class="text-[11px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">model capacity</span>
+              <span class="text-[11px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">dropout rate trade-off</span>
+              <span class="text-[11px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">underfitting</span>
+            </div>
+          </div>
+
+          <!-- Pedagogical Recommendation -->
+          <div class="mb-4 text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+            <strong class="text-white">Рекомендация:</strong> Студент самостоятельно исследовал границу емкости сети. Рекомендуется задать 1 контрольный устный блиц-вопрос на следующем занятии для подтверждения пересмотра очной оценки (потенциал: 90–95).
+          </div>
+
+          <!-- Human-in-the-Loop Actions -->
+          <div class="mt-auto space-y-2 pt-2 border-t border-slate-800">
+            <div class="grid grid-cols-2 gap-2">
+              <button onclick="handleTeacherAction('blitz', 'stud_aai_042')" class="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/30 transition">
+                🎯 Назначить блиц-опрос
+              </button>
+              <button onclick="handleTeacherAction('review', 'stud_aai_042')" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/30 transition">
+                ✍️ Пересмотреть балл (93)
+              </button>
+            </div>
+            <button onclick="handleTeacherAction('keep', 'stud_aai_042')" class="w-full px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition">
+              🔒 Оставить очную оценку 70.0
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Cohort Table of all 28 Students -->
+      <div class="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-2xl">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Ведомость группы и диагностические расхождения (28 студентов)</h3>
+            <p class="text-xs text-slate-400 mt-0.5">Очные оценки неприкосновенны; отображаются сессионный статус и ректифицированные дельты</p>
+          </div>
+
+          <!-- Table Filters -->
+          <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+            <button onclick="filterTable('all')" class="tbl-filter px-3 py-1 rounded-lg bg-violet-600 text-white font-medium" data-filter="all">Все (28)</button>
+            <button onclick="filterTable('alerts')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="alerts">Внимание (3)</button>
+            <button onclick="filterTable('normal')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="normal">Согласие (9)</button>
+            <button onclick="filterTable('opted')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="opted">Без бота (16)</button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-900 text-slate-400 uppercase font-mono border-b border-slate-800">
+              <tr>
+                <th class="py-3 px-4">Студент</th>
+                <th class="py-3 px-3 text-center">Очная оценка ($G_{\text{prof}}$)</th>
+                <th class="py-3 px-3 text-center">ИИ-индекс ($S_{\text{depth}}$)</th>
+                <th class="py-3 px-3 text-center">Ректификация ($\Delta^+$)</th>
+                <th class="py-3 px-3 text-center">Робастный Z⁺</th>
+                <th class="py-3 px-3 text-center">Статус / Зона</th>
+                <th class="py-3 px-4 text-right">Действия</th>
+              </tr>
+            </thead>
+            <tbody id="cohort-table-body" class="divide-y divide-slate-800/60 font-sans">
+              <!-- Dynamically populated rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- =================================================================== -->
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <!-- =================================================================== -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+  <!-- =================================================================== -->
+  <!-- JAVASCRIPT APP LOGIC -->
+  <!-- =================================================================== -->
+  <script>
+    // State
+    let currentSessionId = null;
+    let currentTurnNumber = 0;
+    let activeTopicId = 'topic_05_regularization';
+    let chartInstance = null;
+    let cachedStudents = [];
+    let pasteEventFired = false;
+    let typingStartTime = Date.now();
+
+    // -----------------------------------------------------------------
+    // INITIALIZATION
+    // -----------------------------------------------------------------
+    document.addEventListener('DOMContentLoaded', async () => {
+      await startStudentSession();
+      await refreshDashboard();
+      startCountdownTimer(45 * 60);
+    });
+
+    // -----------------------------------------------------------------
+    // VIEW SWITCHER
+    // -----------------------------------------------------------------
+    function switchView(view) {
+      const vStudent = document.getElementById('view-student');
+      const vProf = document.getElementById('view-professor');
+      const btnStudent = document.getElementById('btn-tab-student');
+      const btnProf = document.getElementById('btn-tab-professor');
+
+      if (view === 'student') {
+        vStudent.classList.remove('hidden');
+        vProf.classList.add('hidden');
+        btnStudent.className = 'px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 bg-violet-600 text-white shadow-md';
+        btnProf.className = 'px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 text-slate-400 hover:text-white';
+      } else {
+        vStudent.classList.add('hidden');
+        vProf.classList.remove('hidden');
+        btnProf.className = 'px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 bg-violet-600 text-white shadow-md';
+        btnStudent.className = 'px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 text-slate-400 hover:text-white';
+        // Re-render chart on tab display
+        if (chartInstance) chartInstance.resize();
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // TIMER LOGIC
+    // -----------------------------------------------------------------
+    function startCountdownTimer(seconds) {
+      let remaining = seconds;
+      const el = document.getElementById('timer-display');
+      setInterval(() => {
+        if (remaining <= 0) return;
+        remaining--;
+        const m = Math.floor(remaining / 60).toString().padStart(2, '0');
+        const s = (remaining % 60).toString().padStart(2, '0');
+        el.textContent = `${m}:${s}`;
+      }, 1000);
+    }
+
+    // -----------------------------------------------------------------
+    // STUDENT VIEW: SESSION & CHAT
+    // -----------------------------------------------------------------
+    async function startStudentSession() {
+      try {
+        const res = await fetch('/api/v1/session/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            student_id: 'stud_aai_042',
+            course_id: 'prog_ai_2026',
+            topic_id: activeTopicId,
+            force_open: true
+          })
+        });
+        const data = await res.json();
+        currentSessionId = data.session_id;
+        currentTurnNumber = 0;
+        typingStartTime = Date.now();
+      } catch (err) {
+        console.error('Session start error:', err);
+      }
+    }
+
+    function handlePaste(e) {
+      pasteEventFired = true;
+      const statusEl = document.getElementById('telemetry-status');
+      statusEl.innerHTML = `
+        <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+        <span class="text-amber-400">Телеметрия ввода: зафиксирована вставка текста (onPaste)</span>
+      `;
+    }
+
+    const demoTurnMessages = {
+      1: "Переобучение связано с тем, что нейроны подстраиваются под шум в выборке и вырабатывают взаимную зависимость — ко-адаптацию весов.",
+      2: "Dropout случайным образом исключает нейроны скрытых слоев во время обучения. Это заставляет каждый нейрон обучаться более надежным признакам без опоры на конкретных соседей.",
+      3: "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?"
+    };
+
+    function fillStudentMessage(turn) {
+      const input = document.getElementById('student-input');
+      input.value = demoTurnMessages[turn] || '';
+      input.focus();
+    }
+
+    async function sendStudentMessage() {
+      const input = document.getElementById('student-input');
+      const text = input.value.trim();
+      if (!text || !currentSessionId) return;
+
+      const durationMs = Date.now() - typingStartTime;
+
+      // Append student message to UI
+      appendChatMessage('user', text);
+      input.value = '';
+
+      // Disable button during call
+      const sendBtn = document.getElementById('btn-send-message');
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = '<span>Думает...</span>';
+
+      try {
+        const res = await fetch('/api/v1/dialog/turn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            student_message: text,
+            paste_detected: pasteEventFired,
+            typing_duration_ms: durationMs
+          })
+        });
+
+        const data = await res.json();
+        currentTurnNumber = data.turn_number;
+
+        // Reset telemetry flags for next turn
+        pasteEventFired = false;
+        typingStartTime = Date.now();
+
+        // Update confidence badge
+        const badge = document.getElementById('badge-confidence');
+        badge.textContent = `Шаг ${currentTurnNumber}/3 (${data.session_confidence})`;
+        if (currentTurnNumber >= 3) {
+          badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+          document.getElementById('stud-diag-status').textContent = 'Сессия завершена (93.5)';
+          document.getElementById('stud-diag-status').className = 'text-violet-400 font-semibold';
+          showToast('Аудит завершен', 'Диагностический отчет успешно направлен в консоль преподавателя.', 'purple');
+        }
+
+        // Append bot reply
+        appendChatMessage('assistant', data.system_reply);
+
+        // Refresh dashboard metrics
+        await refreshDashboard();
+
+      } catch (err) {
+        console.error('Turn error:', err);
+        showToast('Ошибка сети', 'Не удалось связаться с бэкендом.', 'red');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<span>Отправить</span>';
+      }
+    }
+
+    function appendChatMessage(role, text) {
+      const container = document.getElementById('chat-messages');
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'flex items-start space-x-3';
+
+      if (role === 'user') {
+        msgDiv.className = 'flex items-start justify-end space-x-3';
+        msgDiv.innerHTML = `
+          <div class="bg-violet-600 rounded-2xl rounded-tr-sm p-3.5 max-w-xl text-sm leading-relaxed text-white shadow-lg">
+            ${escapeHtml(text)}
+          </div>
+          <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold shrink-0 text-slate-300">
+            К
+          </div>
+        `;
+      } else {
+        msgDiv.innerHTML = `
+          <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
+            AI
+          </div>
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
+            ${escapeHtml(text)}
+          </div>
+        `;
+      }
+
+      container.appendChild(msgDiv);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // -----------------------------------------------------------------
+    // PROFESSOR VIEW: DASHBOARD & TABLE
+    // -----------------------------------------------------------------
+    async function refreshDashboard() {
+      try {
+        const res = await fetch(`/api/v1/audit/dashboard?topic_id=${activeTopicId}`);
+        const data = await res.json();
+
+        // Update KPIs
+        document.getElementById('kpi-total').textContent = data.total_students;
+        document.getElementById('kpi-opted-out').textContent = data.opted_out_or_incomplete;
+        document.getElementById('kpi-completed').textContent = data.sessions_completed;
+        document.getElementById('kpi-purple').textContent = data.alerts_count.purple;
+
+        // Thresholds
+        document.getElementById('dist-sigma').textContent = data.distribution.robust_sigma.toFixed(2);
+        document.getElementById('th-1s').textContent = data.distribution.sigma_thresholds.plus_1_sigma.toFixed(2);
+        document.getElementById('th-2s').textContent = data.distribution.sigma_thresholds.plus_2_sigma.toFixed(2);
+        document.getElementById('th-3s').textContent = data.distribution.sigma_thresholds.plus_3_sigma.toFixed(2);
+
+        document.getElementById('cnt-green').textContent = `${data.alerts_count.green} студ.`;
+        document.getElementById('cnt-yellow').textContent = `${data.alerts_count.yellow} студ.`;
+        document.getElementById('cnt-red').textContent = `${data.alerts_count.red} студ.`;
+        document.getElementById('cnt-purple').textContent = `${data.alerts_count.purple} студ.`;
+
+        // Update Table
+        cachedStudents = data.students || [];
+        renderTable(cachedStudents);
+
+        // Update / Render Chart
+        renderGaussianChart(data);
+
+      } catch (err) {
+        console.error('Refresh dashboard error:', err);
+      }
+    }
+
+    function renderTable(students) {
+      const tbody = document.getElementById('cohort-table-body');
+      tbody.innerHTML = '';
+
+      students.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-900/60 transition';
+
+        // Badge styling
+        let badgeHtml = '';
+        if (s.zone === 'HIGH_DISCREPANCY') {
+          badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-violet-950 text-violet-300 border border-violet-500/40">🟣 HIGH DISCREPANCY</span>';
+        } else if (s.zone === 'WATCHLIST') {
+          badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-amber-950/60 text-amber-300 border border-amber-500/40">🟡 WATCHLIST</span>';
+        } else if (s.zone === 'NORMAL') {
+          badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-emerald-950/60 text-emerald-300 border border-emerald-500/30">🟢 NORMAL</span>';
+        } else {
+          badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[11px] font-mono text-slate-400 bg-slate-900 border border-slate-800">⚪ OPTED_OUT</span>';
+        }
+
+        const deltaDisplay = s.rectified_delta > 0 
+          ? `<span class="text-emerald-400 font-mono font-bold">+${s.rectified_delta.toFixed(1)}</span>` 
+          : `<span class="text-slate-500 font-mono">0.0</span>`;
+
+        const zDisplay = s.z_score > 0
+          ? `<span class="font-mono font-bold text-violet-300">+${s.z_score.toFixed(2)}σ</span>`
+          : `<span class="font-mono text-slate-500">0.00σ</span>`;
+
+        const depthDisplay = s.ai_depth_score !== null 
+          ? `<span class="font-mono font-semibold text-slate-200">${s.ai_depth_score.toFixed(1)}</span>`
+          : `<span class="text-slate-600 font-mono">—</span>`;
+
+        tr.innerHTML = `
+          <td class="py-3 px-4">
+            <div class="font-semibold text-slate-200">${escapeHtml(s.display_name)}</div>
+            <div class="text-[11px] font-mono text-slate-500">${s.student_id}</div>
+          </td>
+          <td class="py-3 px-3 text-center font-mono font-bold text-slate-300">${s.in_class_grade.toFixed(1)}</td>
+          <td class="py-3 px-3 text-center">${depthDisplay}</td>
+          <td class="py-3 px-3 text-center">${deltaDisplay}</td>
+          <td class="py-3 px-3 text-center">${zDisplay}</td>
+          <td class="py-3 px-3 text-center">${badgeHtml}</td>
+          <td class="py-3 px-4 text-right">
+            ${s.has_report 
+              ? `<button onclick="viewReport('${s.student_id}')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-violet-300 font-medium transition">Отчет</button>`
+              : `<span class="text-slate-600 text-[11px]">Нет данных</span>`
+            }
+          </td>
+        `;
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterTable(type) {
+      document.querySelectorAll('.tbl-filter').forEach(b => {
+        if (b.dataset.filter === type) {
+          b.className = 'tbl-filter px-3 py-1 rounded-lg bg-violet-600 text-white font-medium';
+        } else {
+          b.className = 'tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white';
+        }
+      });
+
+      if (type === 'all') {
+        renderTable(cachedStudents);
+      } else if (type === 'alerts') {
+        renderTable(cachedStudents.filter(s => s.zone === 'HIGH_DISCREPANCY' || s.zone === 'WATCHLIST' || s.zone === 'AUDIT_TRIGGER'));
+      } else if (type === 'normal') {
+        renderTable(cachedStudents.filter(s => s.zone === 'NORMAL'));
+      } else if (type === 'opted') {
+        renderTable(cachedStudents.filter(s => s.session_status !== 'COMPLETED'));
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // CHART.JS DISTRIBUTION PLOT
+    // -----------------------------------------------------------------
+    function renderGaussianChart(data) {
+      const ctx = document.getElementById('sigmaChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      const median = data.distribution.median_delta;
+      const sigma = data.distribution.robust_sigma;
+      const th1 = data.distribution.sigma_thresholds.plus_1_sigma;
+      const th2 = data.distribution.sigma_thresholds.plus_2_sigma;
+      const th3 = data.distribution.sigma_thresholds.plus_3_sigma;
+
+      // Generate points for Gaussian bell curve from -5 to +28
+      const labels = [];
+      const curveData = [];
+      for (let x = -4; x <= 26; x += 0.5) {
+        labels.push(x.toFixed(1));
+        // Normal distribution PDF
+        const exponent = -0.5 * Math.pow((x - median) / sigma, 2);
+        const y = (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
+        curveData.push(y);
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Плотность вероятности канала (Gaussian/MAD)',
+              data: curveData,
+              borderColor: '#8b5cf6',
+              borderWidth: 2.5,
+              fill: true,
+              backgroundColor: 'rgba(139, 92, 246, 0.08)',
+              tension: 0.4,
+              pointRadius: 0
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: (items) => `Дельта Δ⁺ = ${items[0].label}`,
+                label: () => ''
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
+            },
+            y: {
+              display: false,
+              grid: { display: false }
+            }
+          }
+        }
+      });
+    }
+
+    // -----------------------------------------------------------------
+    // TEACHER ACTIONS & TOASTS
+    // -----------------------------------------------------------------
+    function handleTeacherAction(action, studentId) {
+      if (action === 'blitz') {
+        showToast('Блиц-опрос назначен', 'Студенту К. отправлено персональное приглашение на 2-минутный устный блиц-вопрос перед началом следующей пары.', 'purple');
+      } else if (action === 'review') {
+        showToast('Оценка повышена', 'Очная оценка в ведомости пересмотрена с 70.0 до 93.0 балла на основании доказанной глубины.', 'emerald');
+      } else {
+        showToast('Оценка подтверждена', 'Очная оценка 70.0 оставлена в силе без изменений.', 'slate');
+      }
+    }
+
+    async function resetDemoData() {
+      try {
+        await fetch('/api/v1/demo/reset', { method: 'POST' });
+        await refreshDashboard();
+        showToast('Демо сброшено', 'Когорта возвращена к исходным каноническим 28 студентам.', 'slate');
+      } catch (err) {
+        console.error('Reset error:', err);
+      }
+    }
+
+    function viewReport(studentId) {
+      switchView('professor');
+      showToast('Отчет открыт', `Отображены доказательства для ${studentId}`, 'purple');
+    }
+
+    function showToast(title, message, color = 'violet') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      
+      const colorMap = {
+        purple: 'border-violet-500/50 bg-slate-900/95 text-violet-200',
+        emerald: 'border-emerald-500/50 bg-slate-900/95 text-emerald-200',
+        red: 'border-rose-500/50 bg-slate-900/95 text-rose-200',
+        slate: 'border-slate-700 bg-slate-900/95 text-slate-200'
+      };
+
+      toast.className = `p-4 rounded-xl border shadow-2xl max-w-sm pointer-events-auto transform transition-all duration-300 translate-y-2 opacity-0 flex items-start space-x-3 ${colorMap[color] || colorMap.purple}`;
+      toast.innerHTML = `
+        <div class="text-base">🔔</div>
+        <div>
+          <div class="font-bold text-xs text-white">${escapeHtml(title)}</div>
+          <div class="text-xs text-slate-300 mt-0.5 leading-relaxed">${escapeHtml(message)}</div>
+        </div>
+      `;
+
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>
+
