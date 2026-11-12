@@ -108,6 +108,7 @@ class DialogTurnResponse(BaseModel):
     turn_number: int
     system_reply: str
     session_confidence: str
+    is_duplicate: bool = False
 
 
 class GradeSyncItem(BaseModel):

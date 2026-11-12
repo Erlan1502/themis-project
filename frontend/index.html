@@ -85,6 +85,18 @@
         </button>
       </div>
 
+      <!-- App Mode Switcher (Student / Developer) -->
+      <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+        <button id="btn-mode-student" onclick="setAppMode('student')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white flex items-center space-x-1">
+          <span>👤</span>
+          <span>Студент</span>
+        </button>
+        <button id="btn-mode-dev" onclick="setAppMode('dev')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-indigo-600 text-white shadow flex items-center space-x-1">
+          <span>🛠️</span>
+          <span>Разработчик</span>
+        </button>
+      </div>
+
       <!-- Actions -->
       <div class="flex items-center space-x-2">
         <button onclick="resetDemoData()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center space-x-1.5">
@@ -94,6 +106,38 @@
       </div>
     </div>
   </header>
+
+  <!-- =================================================================== -->
+  <!-- SYLLABUS CONTEXT & WEEK SELECTOR BAR -->
+  <!-- =================================================================== -->
+  <div class="bg-slate-950/70 border-b border-slate-800/80 px-4 py-2.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div class="flex items-center flex-wrap gap-2">
+        <span class="font-bold text-slate-200 flex items-center space-x-1">
+          <span>🏛️</span>
+          <span>Astana IT University</span>
+        </span>
+        <span class="text-slate-600">|</span>
+        <span class="text-slate-400">Курс: <strong class="text-slate-200">PAI — Программирование для ИИ (2026/2027)</strong></span>
+        <span class="text-slate-600">|</span>
+        <span class="text-slate-400">Преподаватель: <strong class="text-slate-200">Белощицкая С., д.т.н., проф.</strong></span>
+      </div>
+
+      <!-- Week Selector -->
+      <div class="flex items-center space-x-2">
+        <label for="select-syllabus-week" class="font-semibold text-violet-400 flex items-center space-x-1">
+          <span>📅</span>
+          <span>Учебная неделя:</span>
+        </label>
+        <select id="select-syllabus-week" onchange="onWeekChanged(this.value)" class="bg-slate-900 border border-violet-500/40 text-violet-200 rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer">
+          <!-- Populated dynamically via loadSyllabusWeeks -->
+        </select>
+        <span class="text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded font-mono">
+          MVP Режим: переключение недель
+        </span>
+      </div>
+    </div>
+  </div>
 
   <!-- =================================================================== -->
   <!-- MAIN CONTENT CONTAINER -->
@@ -138,8 +182,8 @@
                 Q
               </div>
               <div>
-                <h2 class="text-sm font-semibold text-white">Сократический тьютор (Qwen3.5-4B)</h2>
-                <p class="text-xs text-slate-400">Тема 05: Регуляризация и динамика Dropout</p>
+                <h2 class="text-sm font-semibold text-white">Сократический тьютор (Qwen3.5 / Gemini)</h2>
+                <p id="chat-topic-subtitle" class="text-xs text-slate-400">Тема: Загрузка темы силлабуса...</p>
               </div>
             </div>
 
@@ -159,23 +203,23 @@
               <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
                 AI
               </div>
-              <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
-                Привет! На лекции мы разобрали проблему переобучения в глубоких сетях. Подумай: почему обычное увеличение объема данных не всегда спасает от ко-адаптации признаков?
+              <div id="initial-tutor-bubble" class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
+                Загрузка вопроса занятия...
               </div>
             </div>
           </div>
 
-          <!-- Quick-Fill Demo Buttons Panel -->
-          <div class="px-4 py-2.5 bg-slate-900/80 border-t border-slate-800 flex items-center space-x-2 overflow-x-auto text-xs">
-            <span class="text-slate-400 font-medium shrink-0">⚡ Быстрый ввод (Студент К.):</span>
+          <!-- Quick-Fill Demo Buttons Panel (Только в режиме Разработчика/Демо) -->
+          <div id="quick-fill-panel" class="px-4 py-2.5 bg-slate-900/80 border-t border-slate-800 flex items-center space-x-2 overflow-x-auto text-xs">
+            <span class="text-slate-400 font-medium shrink-0">⚡ Быстрый ввод:</span>
             <button onclick="fillStudentMessage(1)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-violet-300 border border-slate-700 transition shrink-0">
               1. Базовый шаг (SOLO 1)
             </button>
             <button onclick="fillStudentMessage(2)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-violet-300 border border-slate-700 transition shrink-0">
-              2. Механизм Dropout (SOLO 2)
+              2. Механизмы (SOLO 2)
             </button>
             <button onclick="fillStudentMessage(3)" class="px-2.5 py-1 rounded bg-violet-900/60 hover:bg-violet-800 text-violet-200 border border-violet-600 transition shrink-0 font-semibold">
-              3. Вопрос 3-го уровня (Синтез К.)
+              3. Синтез и границы (SOLO 3)
             </button>
           </div>
 
@@ -200,7 +244,7 @@
                 <span>Телеметрия ввода: ручной естественный набор</span>
               </div>
               <div>
-                <span>Сессия: <strong class="font-mono text-slate-400">stud_aai_042 (Студент К.)</strong></span>
+                <span>Студент: <strong class="font-mono text-slate-400">stud_aai_042 (Студент К.)</strong></span>
               </div>
             </div>
           </div>
@@ -219,13 +263,13 @@
               </div>
               <div>
                 <h4 class="text-sm font-bold text-white">Студент К. (stud_aai_042)</h4>
-                <p class="text-xs text-slate-400">Programming AI (prog_ai_2026)</p>
+                <p class="text-xs text-slate-400">PAI — Astana IT University</p>
               </div>
             </div>
             
             <div class="space-y-2 border-t border-slate-800/80 pt-3 text-xs">
               <div class="flex justify-between py-1">
-                <span class="text-slate-400">Очная оценка у доски ($G_{\text{prof}}$):</span>
+                <span class="text-slate-400">Очная оценка у доски (G<sub>prof</sub>):</span>
                 <span class="font-bold text-white font-mono">70.0 / 100</span>
               </div>
               <div class="flex justify-between py-1">
@@ -239,9 +283,12 @@
             </div>
           </div>
 
-          <!-- SOLO Taxonomy Guide -->
-          <div class="bg-slate-950 rounded-2xl border border-slate-800 p-5 shadow-xl">
-            <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">Шкала когнитивной глубины (SOLO)</h3>
+          <!-- SOLO Taxonomy Guide (Только в режиме Разработчика) -->
+          <div id="card-solo-taxonomy" class="bg-slate-950 rounded-2xl border border-slate-800 p-5 shadow-xl">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Шкала когнитивной глубины (SOLO)</h3>
+              <span class="text-[10px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded font-mono">Dev Mode</span>
+            </div>
             
             <div class="space-y-3 text-xs">
               <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
@@ -270,15 +317,37 @@
             </div>
           </div>
 
+          <!-- Student Hints / Tips Card (Только в режиме Студента) -->
+          <div id="card-student-tips" class="bg-slate-950 rounded-2xl border border-slate-800 p-5 shadow-xl">
+            <h3 class="text-sm font-semibold text-emerald-400 uppercase tracking-wider mb-3 flex items-center space-x-1.5">
+              <span>💡</span>
+              <span>Рекомендации к диалогу</span>
+            </h3>
+            
+            <div class="space-y-3 text-xs text-slate-300">
+              <p class="leading-relaxed">
+                Вы находитесь в режиме сократического диалога. Здесь нет строгих тестов — тьютор помогает вам исследовать концепции недели.
+              </p>
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800 space-y-1.5">
+                <div class="font-semibold text-white">Как получить максимальный результат:</div>
+                <ul class="list-disc list-inside space-y-1 text-slate-400">
+                  <li>Формулируйте мысли своими словами</li>
+                  <li>Приводите примеры из лекций и практики</li>
+                  <li>Задавайте встречные вопросы и делитесь гипотезами</li>
+                </ul>
+              </div>
+              <div class="p-2.5 rounded-lg bg-indigo-950/30 border border-indigo-500/20 text-indigo-300 flex items-start space-x-2">
+                <span>🛡️</span>
+                <span>Повторение одних и тех же фраз или копирование текста не продвигают диалог.</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Topic Glossary -->
           <div class="bg-slate-950 rounded-2xl border border-slate-800 p-5 shadow-xl">
-            <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-2">Глоссарий занятия</h3>
-            <div class="flex flex-wrap gap-1.5 mt-2">
-              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">co-adaptation</span>
-              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">dropout</span>
-              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">model capacity</span>
-              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">underfitting</span>
-              <span class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">inverted dropout</span>
+            <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-2">Глоссарий выбранной недели</h3>
+            <div id="topic-glossary-pills" class="flex flex-wrap gap-1.5 mt-2">
+              <!-- Populated dynamically -->
             </div>
           </div>
 
@@ -297,10 +366,10 @@
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950 border border-slate-800 p-4 rounded-2xl">
         <div>
           <div class="flex items-center space-x-2">
-            <h2 class="text-base font-bold text-white">Курс: Programming AI (prog_ai_2026)</h2>
-            <span class="px-2 py-0.5 rounded text-xs bg-indigo-500/20 text-indigo-300 font-mono border border-indigo-500/30">Занятие 05</span>
+            <h2 class="text-base font-bold text-white">Astana IT University :: PAI (Программирование для ИИ)</h2>
+            <span id="prof-week-badge" class="px-2 py-0.5 rounded text-xs bg-indigo-500/20 text-indigo-300 font-mono border border-indigo-500/30">Неделя 9</span>
           </div>
-          <p class="text-xs text-slate-400 mt-0.5">Тема: Регуляризация и динамика Dropout (Undergrading Detection Engine)</p>
+          <p id="prof-course-topic" class="text-xs text-slate-400 mt-0.5">Тема: Глубокое обучение и динамика Dropout (Undergrading Detection Engine)</p>
         </div>
 
         <div class="flex items-center space-x-3">
@@ -508,10 +577,10 @@
             <thead class="bg-slate-900 text-slate-400 uppercase font-mono border-b border-slate-800">
               <tr>
                 <th class="py-3 px-4">Студент</th>
-                <th class="py-3 px-3 text-center">Очная оценка ($G_{\text{prof}}$)</th>
-                <th class="py-3 px-3 text-center">ИИ-индекс ($S_{\text{depth}}$)</th>
-                <th class="py-3 px-3 text-center">Ректификация ($\Delta^+$)</th>
-                <th class="py-3 px-3 text-center">Робастный Z⁺</th>
+                <th class="py-3 px-3 text-center">Очная оценка (G<sub>prof</sub>)</th>
+                <th class="py-3 px-3 text-center">ИИ-индекс (S<sub>depth</sub>)</th>
+                <th class="py-3 px-3 text-center">Ректификация (&Delta;<sup>+</sup>)</th>
+                <th class="py-3 px-3 text-center">Робастный Z<sup>+</sup></th>
                 <th class="py-3 px-3 text-center">Статус / Зона</th>
                 <th class="py-3 px-4 text-right">Действия</th>
               </tr>
@@ -539,20 +608,207 @@
     // State
     let currentSessionId = null;
     let currentTurnNumber = 0;
-    let activeTopicId = 'topic_05_regularization';
+    let activeTopicId = 'week_09_deep_learning'; // Default: Week 9 / topic_05
+    let syllabusWeeks = [];
     let chartInstance = null;
     let cachedStudents = [];
     let pasteEventFired = false;
     let typingStartTime = Date.now();
 
+    // Socratic demo prompts for each week
+    const weekDemoMessages = {
+      "week_01_tools_python": {
+        1: "Модули и классы позволяют изолировать логику, тестировать отдельные функции и избегать глобального состояния, в отличие от длинных монолитных ноутбуков.",
+        2: "Git позволяет безопасно откатывать изменения, вести параллельные эксперименты в ветках и отслеживать версии моделей вместе с кодом.",
+        3: "Если мы создадим класс ModelTrainer с инкапсулированным циклом обучения, как правильно реализовать абстракцию для смены оптимизатора без изменения основного кода?"
+      },
+      "week_02_files_api": {
+        1: "Чтение 10 ГБ файла целиком переполнит оперативную память процесса и вызовет MemoryError или сброс в swap.",
+        2: "Pathlib предоставляет объектно-ориентированный интерфейс к путям, а генераторы позволяют читать файл чанками по несколько тысяч строк.",
+        3: "При падении внешнего REST API с кодом 503 Service Unavailable, как реализовать стратегию exponential backoff с джиттером, чтобы не перегрузить сервер повторными запросами?"
+      },
+      "week_03_numpy_tensors": {
+        1: "Массивы ndarray размещаются в непрерывной памяти C-order, а векторизованные операции используют SIMD-инструкции процессора без накладных расходов интерпретатора Python.",
+        2: "Broadcasting виртуально выравнивает размерности без копирования данных, если одна из размерностей равна 1 или совпадает с конца.",
+        3: "В какой момент накладные расходы на копирование тензора из оперативной памяти в память GPU через шину PCIe превышают выигрыш от параллельных вычислений?"
+      },
+      "week_04_pandas_data": {
+        1: "Inner join оставляет только пересечение ключей, поэтому если в одной из таблиц есть пропуски в ID, строки бесследно удалятся и выборка исказится.",
+        2: "Groupby разделяет данные на группы (Split), применяет функцию агрегации (Apply) и объединяет результаты (Combine).",
+        3: "Если мы агрегируем средний чек по пользователям, почему простое заполнение пропусков медианой до группировки смещает общую дисперсию всей когорты?"
+      },
+      "week_05_preprocessing_features": {
+        1: "Расчет среднего и дисперсии на всем датасете до train/test split переносит информацию из тестовой выборки в тренировочную — это классическая утечка данных (data leakage).",
+        2: "StandardScaler центрирует признаки к нулевому среднему и единичной дисперсии, что критично для градиентного спуска и дистанционных алгоритмов.",
+        3: "Почему Pipeline в Scikit-learn гарантирует вызов fit_transform только на обучающей части фолда внутри кросс-валидации, а на валидационной — строго transform?"
+      },
+      "week_06_nlp_text": {
+        1: "TF-IDF взвешивает слова по частоте в документе и редкости в корпусе, но игнорирует порядок слов и синонимию (например, 'хороший' и 'отличный' не связаны).",
+        2: "Лемматизация приводит слово к словарной форме с учетом части речи, а стемминг грубо отсекает окончания по эвристическим правилам.",
+        3: "Каким образом переход к плотным векторным эмбеддингам через косинусное сходство позволяет вычислять семантические аналогии вроде 'король - мужчина + женщина = королева'?"
+      },
+      "week_07_visualization": {
+        1: "При дисбалансе 99:1 константная модель 'всегда класс 0' получает Accuracy 99%, а ROC-AUC выглядит высоким из-за огромного числа True Negatives в знаменателе FPR.",
+        2: "PR-кривая фокусируется только на редком положительном классе, соотнося Precision и Recall без влияния доминирующего отрицательного класса.",
+        3: "В какой момент тепловая карта (heatmap) корреляции Пирсона между признаками сигнализирует о мультиколлинеарности, требующей удаления или регуляризации признаков?"
+      },
+      "week_08_machine_learning": {
+        1: "Глубокое дерево решений запоминает шум в данных, уменьшая смещение (bias), но сильно раздувая дисперсию (variance) и переобучаясь.",
+        2: "Random Forest строит ансамбль независимых деревьев на бутстреп-подвыборках со случайным подпространством признаков, усредняя предсказания.",
+        3: "Если F1-score на кросс-валидации равен 0.88, а на скрытом тесте падает до 0.62, как с помощью кривых обучения (learning curves) диагностировать переобучение или сдвиг распределения?"
+      },
+      "week_09_deep_learning": {
+        1: "Переобучение связано с тем, что нейроны подстраиваются под шум в выборке и вырабатывают взаимную зависимость — ко-адаптацию весов.",
+        2: "Dropout случайным образом исключает нейроны скрытых слоев во время обучения. Это заставляет каждый нейрон обучаться более надежным признакам без опоры на конкретных соседей.",
+        3: "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?"
+      },
+      "topic_05_regularization": {
+        1: "Переобучение связано с тем, что нейроны подстраиваются под шум в выборке и вырабатывают взаимную зависимость — ко-адаптацию весов.",
+        2: "Dropout случайным образом исключает нейроны скрытых слоев во время обучения. Это заставляет каждый нейрон обучаться более надежным признакам без опоры на конкретных соседей.",
+        3: "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?"
+      },
+      "week_10_capstone_project": {
+        1: "В продакшене данные приходят по одному запросу через HTTP, поэтому batch-обработка и векторизованные операции требуют адаптации под потоковый инференс.",
+        2: "FastAPI обеспечивает асинхронную обработку запросов, валидацию типов через Pydantic v2 и автоматическую генерацию Swagger документации.",
+        3: "Как спроектировать мониторинг дрейфа данных (data drift) и падения качества модели во времени при изменении внешнего распределения признаков?"
+      }
+    };
+
+    // -----------------------------------------------------------------
+    // MODE SWITCHER (STUDENT vs DEVELOPER)
+    // -----------------------------------------------------------------
+    let appMode = localStorage.getItem('themis_app_mode') || 'student';
+
+    function setAppMode(mode) {
+      appMode = mode;
+      localStorage.setItem('themis_app_mode', mode);
+      updateModeUI();
+      if (mode === 'student') {
+        showToast('Режим студента', 'Скрыты шкала когнитивной глубины и панель быстрого ввода.', 'emerald');
+      } else {
+        showToast('Режим разработчика', 'Отображены инструменты отладки, шкала SOLO и быстрый ввод.', 'purple');
+      }
+    }
+
+    function updateModeUI() {
+      const btnStudent = document.getElementById('btn-mode-student');
+      const btnDev = document.getElementById('btn-mode-dev');
+      const quickFill = document.getElementById('quick-fill-panel');
+      const cardSolo = document.getElementById('card-solo-taxonomy');
+      const cardTips = document.getElementById('card-student-tips');
+
+      if (appMode === 'student') {
+        if (btnStudent) btnStudent.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-emerald-600 text-white shadow flex items-center space-x-1';
+        if (btnDev) btnDev.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white flex items-center space-x-1';
+
+        if (quickFill) quickFill.classList.add('hidden');
+        if (cardSolo) cardSolo.classList.add('hidden');
+        if (cardTips) cardTips.classList.remove('hidden');
+      } else {
+        if (btnStudent) btnStudent.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white flex items-center space-x-1';
+        if (btnDev) btnDev.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-indigo-600 text-white shadow flex items-center space-x-1';
+
+        if (quickFill) quickFill.classList.remove('hidden');
+        if (cardSolo) cardSolo.classList.remove('hidden');
+        if (cardTips) cardTips.classList.add('hidden');
+      }
+    }
+
     // -----------------------------------------------------------------
     // INITIALIZATION
     // -----------------------------------------------------------------
     document.addEventListener('DOMContentLoaded', async () => {
+      updateModeUI();
+      await loadSyllabusWeeks();
       await startStudentSession();
       await refreshDashboard();
       startCountdownTimer(45 * 60);
     });
+
+    // -----------------------------------------------------------------
+    // SYLLABUS & WEEKS HANDLING
+    // -----------------------------------------------------------------
+    async function loadSyllabusWeeks() {
+      try {
+        const res = await fetch('/api/v1/syllabus/weeks');
+        syllabusWeeks = await res.json();
+        const select = document.getElementById('select-syllabus-week');
+        select.innerHTML = '';
+
+        syllabusWeeks.forEach(w => {
+          const opt = document.createElement('option');
+          opt.value = w.topic_id;
+          opt.textContent = `${w.title}`;
+          // Default selection: Week 9 (Deep Learning & Dropout)
+          if (w.week_number === 9 || w.topic_id === 'week_09_deep_learning') {
+            opt.selected = true;
+          }
+          select.appendChild(opt);
+        });
+
+        applyWeekMetadata(activeTopicId);
+      } catch (err) {
+        console.error('Error loading syllabus weeks:', err);
+      }
+    }
+
+    function applyWeekMetadata(topicId) {
+      const week = syllabusWeeks.find(w => w.topic_id === topicId) || syllabusWeeks.find(w => w.week_number === 9);
+      if (!week) return;
+
+      // Update student view
+      document.getElementById('chat-topic-subtitle').textContent = `Тема: ${week.topic_name}`;
+      document.getElementById('initial-tutor-bubble').textContent = week.initial_prompt;
+
+      // Update glossary pills
+      const pillsContainer = document.getElementById('topic-glossary-pills');
+      pillsContainer.innerHTML = '';
+      (week.glossary || []).forEach(term => {
+        const span = document.createElement('span');
+        span.className = 'text-xs px-2 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800';
+        span.textContent = term;
+        pillsContainer.appendChild(span);
+      });
+
+      // Update professor view
+      const profBadge = document.getElementById('prof-week-badge');
+      if (profBadge) profBadge.textContent = `Неделя ${week.week_number}`;
+      const profTopic = document.getElementById('prof-course-topic');
+      if (profTopic) profTopic.textContent = `Тема: ${week.topic_name}`;
+    }
+
+    async function onWeekChanged(newTopicId) {
+      activeTopicId = newTopicId;
+      applyWeekMetadata(newTopicId);
+
+      // Reset student chat for the new week
+      currentTurnNumber = 0;
+      const chatContainer = document.getElementById('chat-messages');
+      const week = syllabusWeeks.find(w => w.topic_id === newTopicId);
+      const promptText = week ? week.initial_prompt : 'Привет! Расскажи свои рассуждения по теме.';
+
+      chatContainer.innerHTML = `
+        <div class="flex items-start space-x-3">
+          <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
+            AI
+          </div>
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
+            ${escapeHtml(promptText)}
+          </div>
+        </div>
+      `;
+
+      // Reset confidence badge
+      const badge = document.getElementById('badge-confidence');
+      badge.textContent = 'Шаг 0/3 (NO_SIGNAL)';
+      badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700';
+
+      // Start new session
+      await startStudentSession();
+      await refreshDashboard();
+
+      showToast('Смена недели', `Выбрана ${week ? week.title : newTopicId}`, 'purple');
+    }
 
     // -----------------------------------------------------------------
     // VIEW SWITCHER
@@ -573,7 +829,6 @@
         vProf.classList.remove('hidden');
         btnProf.className = 'px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 bg-violet-600 text-white shadow-md';
         btnStudent.className = 'px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 text-slate-400 hover:text-white';
-        // Re-render chart on tab display
         if (chartInstance) chartInstance.resize();
       }
     }
@@ -626,15 +881,10 @@
       `;
     }
 
-    const demoTurnMessages = {
-      1: "Переобучение связано с тем, что нейроны подстраиваются под шум в выборке и вырабатывают взаимную зависимость — ко-адаптацию весов.",
-      2: "Dropout случайным образом исключает нейроны скрытых слоев во время обучения. Это заставляет каждый нейрон обучаться более надежным признакам без опоры на конкретных соседей.",
-      3: "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?"
-    };
-
     function fillStudentMessage(turn) {
       const input = document.getElementById('student-input');
-      input.value = demoTurnMessages[turn] || '';
+      const messagesForTopic = weekDemoMessages[activeTopicId] || weekDemoMessages["week_09_deep_learning"];
+      input.value = messagesForTopic[turn] || '';
       input.focus();
     }
 
@@ -645,11 +895,9 @@
 
       const durationMs = Date.now() - typingStartTime;
 
-      // Append student message to UI
       appendChatMessage('user', text);
       input.value = '';
 
-      // Disable button during call
       const sendBtn = document.getElementById('btn-send-message');
       sendBtn.disabled = true;
       sendBtn.innerHTML = '<span>Думает...</span>';
@@ -669,25 +917,29 @@
         const data = await res.json();
         currentTurnNumber = data.turn_number;
 
-        // Reset telemetry flags for next turn
         pasteEventFired = false;
         typingStartTime = Date.now();
 
-        // Update confidence badge
         const badge = document.getElementById('badge-confidence');
-        badge.textContent = `Шаг ${currentTurnNumber}/3 (${data.session_confidence})`;
-        if (currentTurnNumber >= 3) {
-          badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
-          document.getElementById('stud-diag-status').textContent = 'Сессия завершена (93.5)';
-          document.getElementById('stud-diag-status').className = 'text-violet-400 font-semibold';
-          showToast('Аудит завершен', 'Диагностический отчет успешно направлен в консоль преподавателя.', 'purple');
+
+        if (data.is_duplicate) {
+          badge.textContent = `Повтор (Шаг ${currentTurnNumber}/3)`;
+          badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-amber-950/70 text-amber-300 border border-amber-500/40';
+          showToast('Повтор вопроса', 'Этот тезис уже звучал ранее. Сделайте шаг вглубь или ответьте на встречный вопрос.', 'red');
+          appendChatMessage('assistant', data.system_reply, true);
+        } else {
+          badge.textContent = `Шаг ${currentTurnNumber}/3 (${data.session_confidence})`;
+          if (currentTurnNumber >= 3) {
+            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+            document.getElementById('stud-diag-status').textContent = 'Сессия завершена (93.5)';
+            document.getElementById('stud-diag-status').className = 'text-violet-400 font-semibold';
+            showToast('Аудит завершен', 'Диагностический отчет направлен в консоль преподавателя.', 'purple');
+          } else {
+            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-900/40 text-indigo-300 border border-indigo-500/30';
+          }
+          appendChatMessage('assistant', data.system_reply, false);
+          await refreshDashboard();
         }
-
-        // Append bot reply
-        appendChatMessage('assistant', data.system_reply);
-
-        // Refresh dashboard metrics
-        await refreshDashboard();
 
       } catch (err) {
         console.error('Turn error:', err);
@@ -698,10 +950,9 @@
       }
     }
 
-    function appendChatMessage(role, text) {
+    function appendChatMessage(role, text, isWarning = false) {
       const container = document.getElementById('chat-messages');
       const msgDiv = document.createElement('div');
-      msgDiv.className = 'flex items-start space-x-3';
 
       if (role === 'user') {
         msgDiv.className = 'flex items-start justify-end space-x-3';
@@ -713,7 +964,18 @@
             К
           </div>
         `;
+      } else if (isWarning) {
+        msgDiv.className = 'flex items-start space-x-3';
+        msgDiv.innerHTML = `
+          <div class="w-7 h-7 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-xs font-bold shrink-0 text-amber-300">
+            ⚠️
+          </div>
+          <div class="bg-amber-950/30 border border-amber-500/40 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-amber-200">
+            ${escapeHtml(text)}
+          </div>
+        `;
       } else {
+        msgDiv.className = 'flex items-start space-x-3';
         msgDiv.innerHTML = `
           <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
             AI
@@ -736,13 +998,11 @@
         const res = await fetch(`/api/v1/audit/dashboard?topic_id=${activeTopicId}`);
         const data = await res.json();
 
-        // Update KPIs
         document.getElementById('kpi-total').textContent = data.total_students;
         document.getElementById('kpi-opted-out').textContent = data.opted_out_or_incomplete;
         document.getElementById('kpi-completed').textContent = data.sessions_completed;
         document.getElementById('kpi-purple').textContent = data.alerts_count.purple;
 
-        // Thresholds
         document.getElementById('dist-sigma').textContent = data.distribution.robust_sigma.toFixed(2);
         document.getElementById('th-1s').textContent = data.distribution.sigma_thresholds.plus_1_sigma.toFixed(2);
         document.getElementById('th-2s').textContent = data.distribution.sigma_thresholds.plus_2_sigma.toFixed(2);
@@ -753,11 +1013,8 @@
         document.getElementById('cnt-red').textContent = `${data.alerts_count.red} студ.`;
         document.getElementById('cnt-purple').textContent = `${data.alerts_count.purple} студ.`;
 
-        // Update Table
         cachedStudents = data.students || [];
         renderTable(cachedStudents);
-
-        // Update / Render Chart
         renderGaussianChart(data);
 
       } catch (err) {
@@ -773,7 +1030,6 @@
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-900/60 transition';
 
-        // Badge styling
         let badgeHtml = '';
         if (s.zone === 'HIGH_DISCREPANCY') {
           badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-violet-950 text-violet-300 border border-violet-500/40">🟣 HIGH DISCREPANCY</span>';
@@ -848,16 +1104,11 @@
 
       const median = data.distribution.median_delta;
       const sigma = data.distribution.robust_sigma;
-      const th1 = data.distribution.sigma_thresholds.plus_1_sigma;
-      const th2 = data.distribution.sigma_thresholds.plus_2_sigma;
-      const th3 = data.distribution.sigma_thresholds.plus_3_sigma;
 
-      // Generate points for Gaussian bell curve from -5 to +28
       const labels = [];
       const curveData = [];
       for (let x = -4; x <= 26; x += 0.5) {
         labels.push(x.toFixed(1));
-        // Normal distribution PDF
         const exponent = -0.5 * Math.pow((x - median) / sigma, 2);
         const y = (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
         curveData.push(y);
@@ -977,4 +1228,3 @@
   </script>
 </body>
 </html>
-

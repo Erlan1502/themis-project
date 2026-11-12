@@ -21,6 +21,18 @@ def client():
     return TestClient(app)
 
 
+def test_syllabus_weeks(client):
+    """Тест эндпоинта получения 10 учебных недель силлабуса."""
+    resp = client.get("/api/v1/syllabus/weeks")
+    assert resp.status_code == 200
+    weeks = resp.json()
+    assert len(weeks) == 10
+    assert weeks[0]["week_number"] == 1
+    assert "week_01_tools_python" in weeks[0]["topic_id"]
+    assert weeks[8]["week_number"] == 9
+    assert "week_09_deep_learning" in weeks[8]["topic_id"]
+
+
 def test_session_start(client):
     """Тест эндпоинта 1: инициализация сессии."""
     resp = client.post("/api/v1/session/start", json={

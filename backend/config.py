@@ -12,8 +12,13 @@ class Settings(BaseSettings):
     APP_NAME: str = "Themis Project"
     VERSION: str = "2.0.0"
 
-    # Режим работы LLM: "mock" | "local_qwen" | "cloud"
-    LLM_MODE: str = "mock"
+    # Режим работы LLM: "gemini" | "mock" | "local_qwen" | "cloud"
+    LLM_MODE: str = "gemini"
+
+    # Google Gemini API
+    GEMINI_API_KEY: str = ""
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # Настройки окна доступа к сократическому боту (45 минут по регламенту)
     SCHEDULE_FORCE_OPEN: bool = True

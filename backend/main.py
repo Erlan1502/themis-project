@@ -33,6 +33,8 @@ from backend.math_engine import ThemisMathEngine
 from backend.seed_data import get_canonical_seed_records, STUDENT_NAMES_MAP
 from backend.rag_service import rag_service
 from backend.llm_service import llm_service
+from backend.similarity_service import similarity_service
+from backend.database import save_session, save_turn
 
 # Хранилище сессий и записей в оперативной памяти (для мгновенной демонстрации и IT Fest)
 db_records: Dict[str, StudentAuditRecord] = {}
@@ -84,6 +86,15 @@ app.add_middleware(
 # REST API ЭНДПОИНТЫ
 # =====================================================================
 
+@app.get("/api/v1/syllabus/weeks")
+async def get_syllabus_weeks():
+    """
+    Возвращает список 10 учебных недель курса 'Программирование для ИИ' (PAI 2026).
+    Позволяет студенту и преподавателю переключать недели для демонстрации MVP.
+    """
+    return rag_service.get_all_weeks()
+
+
 @app.post("/api/v1/session/start", response_model=SessionStartResponse)
 async def start_session(req: SessionStartRequest):
     """
@@ -114,6 +125,9 @@ async def start_session(req: SessionStartRequest):
         "active": True,
     }
 
+    # Персистентное сохранение в SQLite
+    save_session(session_id, req.student_id, req.course_id, req.topic_id)
+
     return SessionStartResponse(
         session_id=session_id,
         status="ACTIVE",
@@ -129,9 +143,9 @@ async def start_session(req: SessionStartRequest):
 @app.post("/api/v1/dialog/turn", response_model=DialogTurnResponse)
 async def dialog_turn(req: DialogTurnRequest):
     """
-    Эндпоинт 2: Шаг сократического диалога.
-    Принимает ответ студента, регистрирует телеметрию, обращается к sLLM (Qwen3.5-4B),
-    а по завершении 3-го шага запускает асинхронный аудит и расчет S_depth.
+    Эндпоинт 2: Шаг сократического диалога с защитой от накрутки дубликатами (Anti-Spam).
+    Принимает ответ студента, вычисляет семантическое сходство с ранее отправленными сообщениями.
+    При дублировании или тривиальном перефразировании шаг не увеличивается и балл не растет.
     """
     session = db_sessions.get(req.session_id)
     if not session:
@@ -142,13 +156,52 @@ async def dialog_turn(req: DialogTurnRequest):
     if not record:
         raise HTTPException(status_code=404, detail="Student record not found")
 
-    turn_number = len(session["turns"]) + 1
+    # Предыдущие не-дублирующие сообщения студента
+    previous_msgs = [t["student"] for t in session["turns"] if not t.get("is_duplicate")]
+    is_duplicate, sim_score, matched_msg = similarity_service.check_repetition(req.student_message, previous_msgs)
+
+    # Защита от дублирования: если сообщение повторяет ранее отправленное
+    if is_duplicate:
+        current_valid_turns = len(previous_msgs)
+        warning_reply = (
+            f"⚠️ Твое сообщение дублирует уже отправленный ответ (сходство: {int(sim_score * 100)}%). "
+            "Повторение одной и той же мысли не засчитывается за новый шаг. "
+            "Попробуй раскрыть механизмы подробнее, привести новый аргумент или ответить на вопрос тьютора."
+        )
+        session["turns"].append({
+            "turn_number": current_valid_turns,
+            "student": req.student_message,
+            "system": warning_reply,
+            "typing_duration_ms": req.typing_duration_ms,
+            "is_duplicate": True,
+            "similarity_score": sim_score,
+        })
+        save_turn(
+            session_id=req.session_id,
+            turn_number=current_valid_turns,
+            student_message=req.student_message,
+            system_reply=warning_reply,
+            similarity_score=sim_score,
+            is_duplicate=True,
+            typing_duration_ms=req.typing_duration_ms,
+            paste_detected=req.paste_detected,
+        )
+        return DialogTurnResponse(
+            session_id=req.session_id,
+            turn_number=current_valid_turns,
+            system_reply=warning_reply,
+            session_confidence=f"ПОВТОР (Шаг {current_valid_turns}/{settings.TARGET_TURNS})",
+            is_duplicate=True,
+        )
+
+    # Валидный новый шаг диалога
+    turn_number = len(previous_msgs) + 1
 
     # Сохраняем телеметрию
     if req.paste_detected:
         record.telemetry_clean = False
 
-    # Примерная оценка токенов (русские слова ~ 1.3 токена на слово)
+    # Оценка токенов только для уникальных содержательных сообщений
     word_count = len(req.student_message.split())
     record.total_tokens += max(10, int(word_count * 1.3))
     record.turns_count = turn_number
@@ -156,8 +209,9 @@ async def dialog_turn(req: DialogTurnRequest):
     # Формируем историю диалога для модели
     history: List[Dict[str, str]] = []
     for t in session["turns"]:
-        history.append({"role": "user", "content": t["student"]})
-        history.append({"role": "assistant", "content": t["system"]})
+        if not t.get("is_duplicate"):
+            history.append({"role": "user", "content": t["student"]})
+            history.append({"role": "assistant", "content": t["system"]})
 
     # Генерируем сократическую реплику
     system_reply = await llm_service.generate_socratic_reply(
@@ -172,15 +226,29 @@ async def dialog_turn(req: DialogTurnRequest):
         "student": req.student_message,
         "system": system_reply,
         "typing_duration_ms": req.typing_duration_ms,
+        "is_duplicate": False,
+        "similarity_score": sim_score,
     })
+
+    save_turn(
+        session_id=req.session_id,
+        turn_number=turn_number,
+        student_message=req.student_message,
+        system_reply=system_reply,
+        similarity_score=sim_score,
+        is_duplicate=False,
+        typing_duration_ms=req.typing_duration_ms,
+        paste_detected=req.paste_detected,
+    )
 
     # При достижении целевого числа реплик (Target = 3) запускаем Слой 3A и 3B
     if turn_number >= settings.TARGET_TURNS:
         record.session_status = "COMPLETED"
+        valid_dialog_turns = [t for t in session["turns"] if not t.get("is_duplicate")]
         # Слой 3A: Извлечение доказательств аудита
         extraction = await llm_service.extract_audit_evidence(
             topic_id=session["topic_id"],
-            dialog_turns=session["turns"],
+            dialog_turns=valid_dialog_turns,
         )
         record.extraction = extraction
         # Вычисляем глубину S_depth
@@ -197,6 +265,7 @@ async def dialog_turn(req: DialogTurnRequest):
         turn_number=turn_number,
         system_reply=system_reply,
         session_confidence=confidence_str,
+        is_duplicate=False,
     )
 
 
