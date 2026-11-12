@@ -8,8 +8,9 @@ FastAPI веб-приложение Themis Project (v2.0).
 from typing import Dict, Any, List, Optional
 import os
 import uuid
+import shutil
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,6 +36,8 @@ from backend.rag_service import rag_service
 from backend.llm_service import llm_service
 from backend.similarity_service import similarity_service
 from backend.database import save_session, save_turn
+from backend.ingestion_service import ingestion_service, UPLOADS_DIR
+from backend.vector_store import vector_store
 
 # Хранилище сессий и записей в оперативной памяти (для мгновенной демонстрации и IT Fest)
 db_records: Dict[str, StudentAuditRecord] = {}
@@ -89,10 +92,87 @@ app.add_middleware(
 @app.get("/api/v1/syllabus/weeks")
 async def get_syllabus_weeks():
     """
-    Возвращает список 10 учебных недель курса 'Программирование для ИИ' (PAI 2026).
-    Позволяет студенту и преподавателю переключать недели для демонстрации MVP.
+    Возвращает список учебных недель курса 'Программирование для ИИ' (PAI 2026).
+    Включает как канонические недели, так и динамически загруженные преподавателем.
     """
     return rag_service.get_all_weeks()
+
+
+@app.post("/api/v1/course/upload")
+async def upload_course_lecture(
+    file: UploadFile = File(...),
+    week_number: int = Form(...),
+    topic_name: str = Form(...),
+):
+    """
+    Эндпоинт загрузки и онлайновой индексации лекций курса (PPTX / PDF).
+    Демонстрирует Zero-Config Ingestion на IT Fest:
+    1. Сохраняет файл в data/uploads/
+    2. Разбирает слайды на семантические чанки
+    3. Индексирует в ChromaDB (HNSW граф) с помощью модели эмбеддингов BGE-M3
+    4. Автоматически извлекает глоссарий и генерирует стартовый сократический триггер
+    5. Регистрирует новую неделю в силлабусе курса без перезапуска сервера
+    """
+    filename = file.filename or "lecture.pptx"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in [".pptx", ".pdf"]:
+        raise HTTPException(status_code=400, detail="Поддерживаются только презентации .pptx и документы .pdf")
+
+    saved_path = os.path.join(UPLOADS_DIR, f"week_{week_number}_{filename}")
+    with open(saved_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    try:
+        if ext == ".pptx":
+            slides_data = ingestion_service.parse_pptx(saved_path)
+        else:
+            slides_data = ingestion_service.parse_pdf(saved_path)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Ошибка парсинга презентации: {str(e)}")
+
+    if not slides_data:
+        raise HTTPException(status_code=422, detail="Не удалось извлечь слайды из загруженного файла")
+
+    topic_id = f"week_{week_number:02d}_custom"
+
+    # Векторизация и индексация в HNSW граф ChromaDB
+    indexed_count = vector_store.add_slides(
+        topic_id=topic_id,
+        week_number=week_number,
+        slides_data=slides_data
+    )
+
+    # Генерация метаданных и глоссария
+    meta = ingestion_service.build_course_metadata(
+        topic_id=topic_id,
+        week_number=week_number,
+        topic_name=topic_name,
+        slides=slides_data
+    )
+
+    # Динамическая регистрация в силлабусе
+    rag_service.register_dynamic_week(
+        topic_id=topic_id,
+        week_number=week_number,
+        title=meta["title"],
+        topic_name=meta["topic_name"],
+        initial_prompt=meta["initial_prompt"],
+        glossary=meta["glossary"],
+        slides_count=len(slides_data)
+    )
+
+    return {
+        "status": "SUCCESS",
+        "message": "Лекция успешно обработана и проиндексирована в HNSW (BGE-M3)",
+        "week_number": week_number,
+        "topic_id": topic_id,
+        "title": meta["title"],
+        "topic_name": topic_name,
+        "slides_count": len(slides_data),
+        "indexed_chunks": indexed_count,
+        "glossary": meta["glossary"],
+        "initial_prompt": meta["initial_prompt"]
+    }
 
 
 @app.post("/api/v1/session/start", response_model=SessionStartResponse)

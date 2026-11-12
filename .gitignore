@@ -12,6 +12,8 @@ ENV/
 htmlcov/
 *.log
 *.db
+data/uploads/
+data/chroma_db/
 .DS_Store
 Thumbs.db
 

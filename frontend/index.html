@@ -373,6 +373,10 @@
         </div>
 
         <div class="flex items-center space-x-3">
+          <button onclick="openUploadModal()" class="px-3.5 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 shadow-lg shadow-violet-600/30 transition">
+            <span>📂</span>
+            <span>Загрузить лекцию (PPTX/PDF)</span>
+          </button>
           <button onclick="refreshDashboard()" class="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition">
             <span>🔄</span>
             <span>Обновить аналитику</span>
@@ -595,6 +599,74 @@
     </div>
 
   </main>
+
+  <!-- =================================================================== -->
+  <!-- MODAL: ZERO-CONFIG COURSE LECTURE INGESTION (RAG / HNSW) -->
+  <!-- =================================================================== -->
+  <div id="modal-upload-lecture" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center space-x-2">
+          <span class="text-xl">📂</span>
+          <div>
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Загрузка лекции курса «на лету»</h3>
+            <p class="text-xs text-slate-400">Zero-Config RAG & HNSW Индексация (BGE-M3)</p>
+          </div>
+        </div>
+        <button onclick="closeUploadModal()" class="text-slate-400 hover:text-white text-lg font-mono">&times;</button>
+      </div>
+
+      <!-- Drag & Drop Zone -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 mb-1.5">Файл презентации или конспекта (.pptx / .pdf):</label>
+        <div id="drop-zone" onclick="document.getElementById('file-upload-input').click()" 
+          class="border-2 border-dashed border-slate-700 hover:border-violet-500 rounded-xl p-6 text-center cursor-pointer transition bg-slate-950/50">
+          <input type="file" id="file-upload-input" accept=".pptx,.pdf" class="hidden" onchange="handleFileSelected(event)" />
+          <div id="drop-zone-content" class="space-y-1">
+            <div class="text-3xl">📥</div>
+            <div class="text-xs font-semibold text-slate-200">Перетащите файл сюда или нажмите для выбора</div>
+            <div class="text-[11px] text-slate-500">Поддерживаются PowerPoint (.pptx) и конспекты (.pdf)</div>
+          </div>
+          <div id="drop-zone-preview" class="hidden space-y-1 text-xs text-violet-300 font-mono">
+            <span>Выбран файл: </span>
+            <span id="drop-zone-filename" class="font-bold text-white"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inputs: Week number & Topic name -->
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Номер недели:</label>
+          <input type="number" id="upload-week-num" value="11" min="1" max="30" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500" />
+        </div>
+        <div class="col-span-2">
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Тема занятия:</label>
+          <input type="text" id="upload-topic-name" placeholder="Например: Градиентный бустинг и ансамбли (CatBoost)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500" />
+        </div>
+      </div>
+
+      <!-- Progress status bar -->
+      <div id="upload-progress-box" class="hidden p-3 rounded-xl bg-violet-950/30 border border-violet-500/30 space-y-2">
+        <div class="flex items-center justify-between text-xs font-semibold text-violet-300">
+          <span id="upload-status-text">Разбор слайдов презентации...</span>
+          <span class="animate-spin">⚙️</span>
+        </div>
+        <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+          <div id="upload-progress-bar" class="bg-violet-500 h-1.5 transition-all duration-300" style="width: 25%"></div>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+        <button onclick="closeUploadModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition">Отмена</button>
+        <button id="btn-submit-upload" onclick="submitLectureUpload()" class="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/30 transition flex items-center space-x-1.5">
+          <span>⚡</span>
+          <span>Загрузить и проиндексировать в HNSW</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- =================================================================== -->
   <!-- TOAST NOTIFICATION CONTAINER -->
@@ -1214,6 +1286,147 @@
         toast.classList.add('opacity-0', 'translate-y-2');
         setTimeout(() => toast.remove(), 300);
       }, 4000);
+    }
+
+    // -----------------------------------------------------------------
+    // LECTURE UPLOAD MODAL & HNSW INGESTION
+    // -----------------------------------------------------------------
+    let selectedLectureFile = null;
+
+    function openUploadModal() {
+      document.getElementById('modal-upload-lecture').classList.remove('hidden');
+      const maxWeek = syllabusWeeks.reduce((max, w) => Math.max(max, w.week_number || 0), 10);
+      document.getElementById('upload-week-num').value = maxWeek + 1;
+      resetUploadModalState();
+    }
+
+    function closeUploadModal() {
+      document.getElementById('modal-upload-lecture').classList.add('hidden');
+      resetUploadModalState();
+    }
+
+    function resetUploadModalState() {
+      selectedLectureFile = null;
+      document.getElementById('file-upload-input').value = '';
+      document.getElementById('drop-zone-content').classList.remove('hidden');
+      document.getElementById('drop-zone-preview').classList.add('hidden');
+      document.getElementById('upload-progress-box').classList.add('hidden');
+      const submitBtn = document.getElementById('btn-submit-upload');
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>⚡</span><span>Загрузить и проиндексировать в HNSW</span>';
+    }
+
+    function handleFileSelected(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      selectedLectureFile = file;
+      document.getElementById('drop-zone-filename').textContent = `${file.name} (${(file.size / 1024).toFixed(1)} КБ)`;
+      document.getElementById('drop-zone-content').classList.add('hidden');
+      document.getElementById('drop-zone-preview').classList.remove('hidden');
+
+      const topicInput = document.getElementById('upload-topic-name');
+      if (!topicInput.value.trim()) {
+        const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_.-]+/g, ' ');
+        topicInput.value = cleanName;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const dropZone = document.getElementById('drop-zone');
+      if (dropZone) {
+        ['dragenter', 'dragover'].forEach(eventName => {
+          dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('border-violet-500', 'bg-violet-950/20');
+          }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+          dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('border-violet-500', 'bg-violet-950/20');
+          }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+          const dt = e.dataTransfer;
+          const files = dt.files;
+          if (files && files.length > 0) {
+            document.getElementById('file-upload-input').files = files;
+            handleFileSelected({ target: { files: files } });
+          }
+        }, false);
+      }
+    });
+
+    async function submitLectureUpload() {
+      if (!selectedLectureFile) {
+        showToast('Файл не выбран', 'Пожалуйста, выберите файл .pptx или .pdf для загрузки.', 'red');
+        return;
+      }
+
+      const weekNum = parseInt(document.getElementById('upload-week-num').value, 10) || 11;
+      const topicName = document.getElementById('upload-topic-name').value.trim() || 'Новая тема курса';
+
+      const progressBox = document.getElementById('upload-progress-box');
+      const progressBar = document.getElementById('upload-progress-bar');
+      const statusText = document.getElementById('upload-status-text');
+      const submitBtn = document.getElementById('btn-submit-upload');
+
+      progressBox.classList.remove('hidden');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>Индексация...</span>';
+
+      statusText.textContent = '1/3 Извлечение слайдов и структуры презентации...';
+      progressBar.style.width = '30%';
+
+      const formData = new FormData();
+      formData.append('file', selectedLectureFile);
+      formData.append('week_number', weekNum);
+      formData.append('topic_name', topicName);
+
+      try {
+        setTimeout(() => {
+          statusText.textContent = '2/3 Векторизация BAAI/bge-m3 и построение графа HNSW...';
+          progressBar.style.width = '70%';
+        }, 800);
+
+        const res = await fetch('/api/v1/course/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || 'Ошибка загрузки файла');
+        }
+
+        const data = await res.json();
+        progressBar.style.width = '100%';
+        statusText.textContent = '3/3 Готово! Силлабус и RAG обновлены.';
+
+        showToast('Лекция проиндексирована', `Успешно: ${data.slides_count} слайдов добавлены в HNSW (BGE-M3)`, 'emerald');
+
+        await loadSyllabusWeeks();
+        const select = document.getElementById('select-syllabus-week');
+        if (select) {
+          select.value = data.topic_id;
+          await onWeekChanged(data.topic_id);
+        }
+
+        setTimeout(() => {
+          closeUploadModal();
+        }, 1200);
+
+      } catch (err) {
+        console.error('Upload error:', err);
+        showToast('Ошибка загрузки', err.message || 'Не удалось обработать презентацию', 'red');
+        progressBox.classList.add('hidden');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>⚡</span><span>Попробовать снова</span>';
+      }
     }
 
     function escapeHtml(str) {

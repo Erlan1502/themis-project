@@ -373,15 +373,67 @@ class RAGService:
             return data["glossary"]
         return []
 
+    def register_dynamic_week(
+        self,
+        topic_id: str,
+        week_number: int,
+        title: str,
+        topic_name: str,
+        initial_prompt: str,
+        glossary: List[str],
+        slides_count: int = 0
+    ) -> Dict[str, Any]:
+        """Динамическая регистрация загруженной лекции в силлабус курса."""
+        week_data = {
+            "week_number": week_number,
+            "topic_id": topic_id,
+            "title": title,
+            "topic_name": topic_name,
+            "initial_prompt": initial_prompt,
+            "glossary": glossary,
+            "chunks": [],
+            "slides_count": slides_count
+        }
+        existing_idx = next((i for i, w in enumerate(self._weeks) if w["topic_id"] == topic_id or w["week_number"] == week_number), None)
+        if existing_idx is not None:
+            self._weeks[existing_idx] = week_data
+        else:
+            self._weeks.append(week_data)
+            self._weeks.sort(key=lambda x: x["week_number"])
+
+        self._map[topic_id] = week_data
+        return week_data
+
     def retrieve_chunks(self, query: str, topic_id: str, top_k: int = 2) -> List[Dict[str, Any]]:
-        """Поиск релевантных фрагментов силлабуса для контекстного заземления."""
+        """
+        Поиск релевантных фрагментов для контекстного заземления:
+        Сначала опрашивает HNSW векторную базу ChromaDB по слайдам лекции.
+        При отсутствии загруженных слайдов использует текстовые чанки силлабуса.
+        """
+        try:
+            from backend.vector_store import vector_store
+            vector_results = vector_store.search_relevant_slides(query=query, topic_id=topic_id, top_k=top_k)
+            if vector_results:
+                return [
+                    {
+                        "id": f"slide_{r['metadata'].get('slide_number', 1)}",
+                        "title": r['metadata'].get('title', 'Слайд лекции'),
+                        "content": r['text']
+                    }
+                    for r in vector_results
+                ]
+        except Exception:
+            pass
+
         topic = self.get_topic_data(topic_id)
         if not topic:
             return []
 
-        chunks = topic["chunks"]
-        query_words = set(re.findall(r"\w+", query.lower()))
+        chunks = topic.get("chunks", [])
+        if not chunks:
+            return []
 
+        query_words = set(re.findall(r"\w+", query.lower()))
         scored_chunks = []
         for chunk in chunks:
             text = (chunk["title"] + " " + chunk["content"]).lower()

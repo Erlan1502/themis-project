@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  themis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: themis_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_MODE=gemini
+      - SCHEDULE_FORCE_OPEN=true
+      - SCHEDULE_WINDOW_MINUTES=45
+      - TARGET_TURNS=3
+      - DENSITY_ALPHA=3.5
+      - DENSITY_FLOOR=0.75
+      - INITIATIVE_BONUS=1.0
+      - SIGMA_MIN=4.0
+    env_file:
+      - .env
+    volumes:
+      # Персистентное хранилище векторной базы HNSW, реляционной SQLite и загруженных файлов
+      - ./data/chroma_db:/app/data/chroma_db
+      - ./data/uploads:/app/data/uploads
+      - ./themis_data.db:/app/themis_data.db
+
