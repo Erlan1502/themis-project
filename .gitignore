@@ -17,3 +17,8 @@ data/chroma_db/
 .DS_Store
 Thumbs.db
 
+# Ignored docs and raw presentations
+Документация.md
+Лекции Programming AI/
+
+

@@ -165,10 +165,42 @@ def get_all_student_messages_for_topic(student_id: str, topic_id: str) -> List[s
         SELECT dt.student_message FROM dialog_turns dt
         JOIN sessions s ON dt.session_id = s.session_id
         WHERE s.student_id = ? AND s.topic_id = ? AND dt.is_duplicate = 0
+        ORDER BY dt.id ASC
     """, (student_id, topic_id))
     rows = cursor.fetchall()
     conn.close()
     return [r["student_message"] for r in rows]
+
+
+def get_latest_session_for_student(student_id: str, topic_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Возвращает последнюю сохраненную сессию для студента."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    if topic_id:
+        cursor.execute("""
+            SELECT * FROM sessions 
+            WHERE student_id = ? AND topic_id = ? 
+            ORDER BY created_at DESC LIMIT 1
+        """, (student_id, topic_id))
+    else:
+        cursor.execute("""
+            SELECT * FROM sessions 
+            WHERE student_id = ? 
+            ORDER BY created_at DESC LIMIT 1
+        """, (student_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return dict(row)
+
+
+def get_student_turns(student_id: str, topic_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Возвращает реплики диалога студента из последней сессии."""
+    session = get_latest_session_for_student(student_id, topic_id)
+    if not session:
+        return []
+    return get_turns(session["session_id"])
 
 
 # Инициализируем БД при импорте модуля

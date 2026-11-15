@@ -62,6 +62,8 @@ class StudentAuditRecord:
     turns_count: int = 0
     total_tokens: int = 0
     extraction: Optional[AuditExtractionResult] = None
+    group_id: str = "group_1"               # Идентификатор академической группы (напр. group_1)
+    student_name: Optional[str] = None      # Человекочитаемое имя студента
 
     # Вычисляемые диагностические метрики (не зачетные, не суммируются с G_prof)
     agg_probabilities: Tuple[float, float, float] = (0.0, 0.0, 0.0)

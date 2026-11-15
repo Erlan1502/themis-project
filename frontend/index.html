@@ -169,6 +169,32 @@
         </div>
       </div>
 
+      <!-- Group 1 Student Selector Bar -->
+      <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-violet-600/20 border border-violet-500/40 text-violet-300 flex items-center justify-center font-bold text-lg shrink-0">
+            👥
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-white font-mono">Группа 1 (ИИ-201): Демонстрационный состав</span>
+              <span class="px-2 py-0.5 rounded text-[11px] font-mono bg-violet-950 text-violet-300 border border-violet-500/40 font-semibold">20 студентов</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">Переключайтесь между студентами группы — сессия и история диалога сохраняются в локальном хранилище и SQLite</p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <select id="student-selector" onchange="onStudentChange(this.value)" class="bg-slate-900 border border-violet-500/50 text-violet-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-violet-400 font-medium cursor-pointer shadow-inner">
+            <!-- Populated dynamically with all 20 students of Group 1 -->
+          </select>
+          <button onclick="restartCurrentStudentSession()" class="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold border border-slate-700 transition flex items-center space-x-1 shrink-0" title="Начать новую сократическую сессию для выбранного студента">
+            <span>🔄</span>
+            <span>Новая сессия</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Dialogue Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
@@ -244,7 +270,7 @@
                 <span>Телеметрия ввода: ручной естественный набор</span>
               </div>
               <div>
-                <span>Студент: <strong class="font-mono text-slate-400">stud_aai_042 (Студент К.)</strong></span>
+                <span>Студент: <strong id="telemetry-student-label" class="font-mono text-slate-400">stud_aai_042 (Студент К.)</strong></span>
               </div>
             </div>
           </div>
@@ -258,19 +284,19 @@
           <div class="bg-slate-950 rounded-2xl border border-slate-800 p-5 shadow-xl">
             <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">Ваш академический профиль</h3>
             <div class="flex items-center space-x-3 mb-4">
-              <div class="w-12 h-12 rounded-xl bg-violet-600/20 border border-violet-500/40 text-violet-300 flex items-center justify-center text-lg font-bold">
+              <div id="stud-card-avatar" class="w-12 h-12 rounded-xl bg-violet-600/20 border border-violet-500/40 text-violet-300 flex items-center justify-center text-lg font-bold">
                 К.
               </div>
               <div>
-                <h4 class="text-sm font-bold text-white">Студент К. (stud_aai_042)</h4>
-                <p class="text-xs text-slate-400">PAI — Astana IT University</p>
+                <h4 id="stud-card-name" class="text-sm font-bold text-white">Студент К.</h4>
+                <p id="stud-card-id" class="text-xs text-slate-400 font-mono">stud_aai_042</p>
               </div>
             </div>
             
             <div class="space-y-2 border-t border-slate-800/80 pt-3 text-xs">
               <div class="flex justify-between py-1">
                 <span class="text-slate-400">Очная оценка у доски (G<sub>prof</sub>):</span>
-                <span class="font-bold text-white font-mono">70.0 / 100</span>
+                <span id="stud-card-grade" class="font-bold text-white font-mono">70.0 / 100</span>
               </div>
               <div class="flex justify-between py-1">
                 <span class="text-slate-400">Статус в ведомости:</span>
@@ -568,11 +594,12 @@
           </div>
 
           <!-- Table Filters -->
-          <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
-            <button onclick="filterTable('all')" class="tbl-filter px-3 py-1 rounded-lg bg-violet-600 text-white font-medium" data-filter="all">Все (28)</button>
+          <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs flex-wrap gap-1">
+            <button onclick="filterTable('group1')" class="tbl-filter px-3 py-1 rounded-lg bg-violet-600 text-white font-medium" data-filter="group1">Группа 1 (20)</button>
+            <button onclick="filterTable('all')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="all">Весь поток (28)</button>
             <button onclick="filterTable('alerts')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="alerts">Внимание (3)</button>
             <button onclick="filterTable('normal')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="normal">Согласие (9)</button>
-            <button onclick="filterTable('opted')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="opted">Без бота (16)</button>
+            <button onclick="filterTable('opted')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="opted">Без бота</button>
           </div>
         </div>
 
@@ -678,10 +705,12 @@
   <!-- =================================================================== -->
   <script>
     // State
-    let currentSessionId = null;
+    let currentStudentId = localStorage.getItem('themis_active_student_id') || 'stud_aai_042';
+    let currentSessionId = localStorage.getItem('themis_session_' + currentStudentId) || null;
     let currentTurnNumber = 0;
     let activeTopicId = 'week_09_deep_learning'; // Default: Week 9 / topic_05
     let syllabusWeeks = [];
+    let studentsGroup1 = [];
     let chartInstance = null;
     let cachedStudents = [];
     let pasteEventFired = false;
@@ -792,7 +821,8 @@
     document.addEventListener('DOMContentLoaded', async () => {
       updateModeUI();
       await loadSyllabusWeeks();
-      await startStudentSession();
+      await initStudentSelector();
+      await loadStudentSession(currentStudentId);
       await refreshDashboard();
       startCountdownTimer(45 * 60);
     });
@@ -921,24 +951,175 @@
     }
 
     // -----------------------------------------------------------------
+    // GROUP 1 STUDENT SELECTION & SESSION PERSISTENCE
+    // -----------------------------------------------------------------
+    async function initStudentSelector() {
+      try {
+        const res = await fetch('/api/v1/students?group_id=group_1');
+        studentsGroup1 = await res.json();
+        const sel = document.getElementById('student-selector');
+        if (!sel) return;
+        sel.innerHTML = '';
+
+        studentsGroup1.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.student_id;
+          let icon = '🟢';
+          if (s.zone === 'HIGH_DISCREPANCY') icon = '🟣';
+          else if (s.zone === 'WATCHLIST') icon = '🟡';
+          else if (s.session_status === 'INCOMPLETE_IGNORED') icon = '⚪';
+          else if (s.session_status === 'OPTED_OUT') icon = '⚪';
+
+          opt.textContent = `${icon} ${s.display_name} (Очная: ${s.in_class_grade.toFixed(1)})`;
+          if (s.student_id === currentStudentId) {
+            opt.selected = true;
+          }
+          sel.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Failed to load group students:', err);
+      }
+    }
+
+    async function onStudentChange(newStudentId) {
+      await loadStudentSession(newStudentId);
+      showToast('Смена студента', `Выбран профиль: ${newStudentId}`, 'purple');
+    }
+
+    async function loadStudentSession(studentId) {
+      currentStudentId = studentId;
+      localStorage.setItem('themis_active_student_id', studentId);
+
+      const sel = document.getElementById('student-selector');
+      if (sel && sel.value !== studentId) {
+        sel.value = studentId;
+      }
+
+      // Update student profile card
+      const student = studentsGroup1.find(s => s.student_id === studentId) || {
+        student_id: studentId,
+        display_name: 'Студент',
+        in_class_grade: 70.0,
+        session_status: 'OPTED_OUT'
+      };
+
+      const cardName = document.getElementById('stud-card-name');
+      const cardId = document.getElementById('stud-card-id');
+      const cardAvatar = document.getElementById('stud-card-avatar');
+      const cardGrade = document.getElementById('stud-card-grade');
+      const cardStatus = document.getElementById('stud-diag-status');
+      const telemetryLabel = document.getElementById('telemetry-student-label');
+
+      if (cardName) cardName.textContent = student.display_name;
+      if (cardId) cardId.textContent = student.student_id;
+      if (cardAvatar) {
+        const cleanName = student.display_name.replace('Студент ', '');
+        cardAvatar.textContent = cleanName.charAt(0) + '.';
+      }
+      if (cardGrade) cardGrade.textContent = `${student.in_class_grade.toFixed(1)} / 100`;
+      if (telemetryLabel) telemetryLabel.textContent = `${student.student_id} (${student.display_name})`;
+
+      // Fetch or restore active session from backend/SQLite
+      try {
+        const res = await fetch(`/api/v1/session/active/${studentId}?topic_id=${activeTopicId}`);
+        const data = await res.json();
+
+        const chatContainer = document.getElementById('chat-messages');
+        chatContainer.innerHTML = '';
+
+        const week = syllabusWeeks.find(w => w.topic_id === activeTopicId) || syllabusWeeks.find(w => w.week_number === 9);
+        const promptText = (data && data.initial_prompt) || (week ? week.initial_prompt : 'Вопрос занятия...');
+
+        const initDiv = document.createElement('div');
+        initDiv.className = 'flex items-start space-x-3';
+        initDiv.innerHTML = `
+          <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">AI</div>
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
+            ${escapeHtml(promptText)}
+          </div>
+        `;
+        chatContainer.appendChild(initDiv);
+
+        if (data.found && data.session_id) {
+          currentSessionId = data.session_id;
+          currentTurnNumber = data.turns_count;
+          localStorage.setItem('themis_session_' + studentId, currentSessionId);
+
+          // Append past dialog turns
+          data.turns.forEach(t => {
+            appendChatMessage('user', t.student);
+            appendChatMessage('assistant', t.system, t.is_duplicate);
+          });
+
+          const badge = document.getElementById('badge-confidence');
+          if (currentTurnNumber >= 3) {
+            badge.textContent = `Шаг 3/3 (Сессия завершена)`;
+            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+            if (cardStatus) {
+              const depthScore = student.ai_depth_score ? student.ai_depth_score.toFixed(1) : '93.5';
+              cardStatus.textContent = `Сессия завершена (${depthScore})`;
+              cardStatus.className = 'text-violet-400 font-semibold';
+            }
+          } else if (currentTurnNumber > 0) {
+            badge.textContent = `Шаг ${currentTurnNumber}/3 (В процессе)`;
+            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-900/40 text-indigo-300 border border-indigo-500/30';
+            if (cardStatus) {
+              cardStatus.textContent = `В процессе диалога (Шаг ${currentTurnNumber}/3)`;
+              cardStatus.className = 'text-amber-400 font-semibold';
+            }
+          } else {
+            badge.textContent = 'Шаг 0/3 (NO_SIGNAL)';
+            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700';
+            if (cardStatus) {
+              cardStatus.textContent = 'Ожидает начала (Добровольный вход)';
+              cardStatus.className = 'text-slate-400 font-semibold';
+            }
+          }
+        } else {
+          currentSessionId = null;
+          currentTurnNumber = 0;
+          const badge = document.getElementById('badge-confidence');
+          badge.textContent = 'Шаг 0/3 (NO_SIGNAL)';
+          badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700';
+          if (cardStatus) {
+            cardStatus.textContent = student.session_status === 'OPTED_OUT' 
+              ? 'Оценка в журнале (Opted-Out)' 
+              : 'Ожидает начала (Добровольный вход)';
+            cardStatus.className = 'text-slate-400 font-semibold';
+          }
+        }
+      } catch (err) {
+        console.error('Error loading student session:', err);
+      }
+    }
+
+    async function restartCurrentStudentSession() {
+      await startStudentSession(true);
+      await loadStudentSession(currentStudentId);
+      showToast('Новая сессия', `Для студента ${currentStudentId} создана чистая сократическая сессия`, 'purple');
+    }
+
+    // -----------------------------------------------------------------
     // STUDENT VIEW: SESSION & CHAT
     // -----------------------------------------------------------------
-    async function startStudentSession() {
+    async function startStudentSession(forceOpen = false) {
       try {
         const res = await fetch('/api/v1/session/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            student_id: 'stud_aai_042',
+            student_id: currentStudentId,
             course_id: 'prog_ai_2026',
             topic_id: activeTopicId,
-            force_open: true
+            force_open: forceOpen
           })
         });
         const data = await res.json();
         currentSessionId = data.session_id;
         currentTurnNumber = 0;
         typingStartTime = Date.now();
+        localStorage.setItem('themis_session_' + currentStudentId, currentSessionId);
+        return data;
       } catch (err) {
         console.error('Session start error:', err);
       }
@@ -963,7 +1144,12 @@
     async function sendStudentMessage() {
       const input = document.getElementById('student-input');
       const text = input.value.trim();
-      if (!text || !currentSessionId) return;
+      if (!text) return;
+
+      if (!currentSessionId) {
+        await startStudentSession(false);
+      }
+      if (!currentSessionId) return;
 
       const durationMs = Date.now() - typingStartTime;
 
@@ -991,6 +1177,7 @@
 
         pasteEventFired = false;
         typingStartTime = Date.now();
+        localStorage.setItem('themis_session_' + currentStudentId, currentSessionId);
 
         const badge = document.getElementById('badge-confidence');
 
@@ -1125,9 +1312,13 @@
           ? `<span class="font-mono font-semibold text-slate-200">${s.ai_depth_score.toFixed(1)}</span>`
           : `<span class="text-slate-600 font-mono">—</span>`;
 
+        const groupTag = s.group_id === 'group_1' 
+          ? '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-violet-950/70 text-violet-300 border border-violet-500/30">Гр. 1</span>'
+          : '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700">Гр. 2</span>';
+
         tr.innerHTML = `
           <td class="py-3 px-4">
-            <div class="font-semibold text-slate-200">${escapeHtml(s.display_name)}</div>
+            <div class="font-semibold text-slate-200 flex items-center">${escapeHtml(s.display_name)} ${groupTag}</div>
             <div class="text-[11px] font-mono text-slate-500">${s.student_id}</div>
           </td>
           <td class="py-3 px-3 text-center font-mono font-bold text-slate-300">${s.in_class_grade.toFixed(1)}</td>
@@ -1156,7 +1347,9 @@
         }
       });
 
-      if (type === 'all') {
+      if (type === 'group1') {
+        renderTable(cachedStudents.filter(s => s.group_id === 'group_1'));
+      } else if (type === 'all') {
         renderTable(cachedStudents);
       } else if (type === 'alerts') {
         renderTable(cachedStudents.filter(s => s.zone === 'HIGH_DISCREPANCY' || s.zone === 'WATCHLIST' || s.zone === 'AUDIT_TRIGGER'));

@@ -23,6 +23,63 @@ from backend.models_schemas import (
 from backend.math_engine import ThemisMathEngine
 
 
+# Словарь метаданных студентов для обогащения UI (имена, аватары)
+STUDENT_NAMES_MAP = {
+    "stud_aai_042": "Студент К. (Анонимный аудит)",
+    "stud_aai_001": "Алексей Смирнов",
+    "stud_aai_002": "Айгерим Тулегенова",
+    "stud_aai_003": "Даниил Морозов",
+    "stud_aai_004": "Екатерина Волкова",
+    "stud_aai_005": "Жандос Касымов",
+    "stud_aai_006": "Иван Новиков",
+    "stud_aai_007": "Мария Федорова",
+    "stud_aai_008": "Нурлан Сапаров",
+    "stud_aai_009": "Ольга Васильева",
+    "stud_aai_010": "Павел Ковалев",
+    "stud_aai_011": "Руслан Ахметов",
+    "stud_aai_015": "София Михайлова",
+    "stud_aai_019": "Тимур Исаев",
+    "stud_aai_020": "Александр Попов",
+    "stud_aai_021": "Виктория Лебедева",
+    "stud_aai_022": "Дмитрий Козлов",
+    "stud_aai_023": "Елена Соколова",
+    "stud_aai_024": "Игорь Павлов",
+    "stud_aai_025": "Ксения Макарова",
+    "stud_aai_026": "Максим Семенов",
+    "stud_aai_027": "Наталья Голубева",
+    "stud_aai_028": "Олег Виноградов",
+    "stud_aai_029": "Полина Богданова",
+    "stud_aai_030": "Роман Воробьев",
+    "stud_aai_031": "Светлана Медведева",
+    "stud_aai_032": "Татьяна Орлова",
+    "stud_aai_033": "Юрий Тарасов",
+}
+
+# Идентификаторы 20 студентов, входящих в Группу 1
+GROUP_1_STUDENT_IDS = [
+    "stud_aai_042",  # 1. Студент К. (Purple, Completed)
+    "stud_aai_001",  # 2. Алексей Смирнов (Green, Completed)
+    "stud_aai_002",  # 3. Айгерим Тулегенова (Green, Completed)
+    "stud_aai_003",  # 4. Даниил Морозов (Green, Completed)
+    "stud_aai_004",  # 5. Екатерина Волкова (Green, Completed)
+    "stud_aai_005",  # 6. Жандос Касымов (Green, Completed)
+    "stud_aai_006",  # 7. Иван Новиков (Green, Completed)
+    "stud_aai_007",  # 8. Мария Федорова (Green, Completed)
+    "stud_aai_008",  # 9. Нурлан Сапаров (Green, Completed)
+    "stud_aai_009",  # 10. Ольга Васильева (Green, Completed)
+    "stud_aai_010",  # 11. Павел Ковалев (Yellow, Completed)
+    "stud_aai_011",  # 12. Руслан Ахметов (Yellow, Completed)
+    "stud_aai_015",  # 13. София Михайлова (Incomplete, Ignored)
+    "stud_aai_019",  # 14. Тимур Исаев (Incomplete, Ignored)
+    "stud_aai_020",  # 15. Александр Попов (Opted-Out)
+    "stud_aai_021",  # 16. Виктория Лебедева (Opted-Out)
+    "stud_aai_022",  # 17. Дмитрий Козлов (Opted-Out)
+    "stud_aai_023",  # 18. Елена Соколова (Opted-Out)
+    "stud_aai_024",  # 19. Игорь Павлов (Opted-Out)
+    "stud_aai_025",  # 20. Ксения Макарова (Opted-Out)
+]
+
+
 def get_canonical_seed_records() -> List[StudentAuditRecord]:
     records: List[StudentAuditRecord] = []
 
@@ -59,6 +116,8 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
         total_tokens=180,
         extraction=extraction_stud_k,
         telemetry_clean=True,
+        group_id="group_1",
+        student_name=STUDENT_NAMES_MAP["stud_aai_042"],
     )
     # Предварительный расчет глубины
     ThemisMathEngine().compute_individual_depth(stud_k)
@@ -84,7 +143,6 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
 
     for sid, in_class, raw_d, n_c, tokens, init, quotes, just in other_completed_configs:
         depth_score = round(in_class + raw_d, 1)
-        # Формируем реалистичную экстракцию
         ext = AuditExtractionResult(
             on_topic=True,
             student_quotes=quotes,
@@ -106,6 +164,8 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
             extraction=ext,
             ai_depth_score=depth_score,
             telemetry_clean=True,
+            group_id="group_1",
+            student_name=STUDENT_NAMES_MAP.get(sid, sid),
         )
         records.append(rec)
 
@@ -136,27 +196,31 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
             ),
             ai_depth_score=None,
             telemetry_clean=True,
+            group_id="group_1",
+            student_name=STUDENT_NAMES_MAP.get(sid, sid),
         )
         records.append(rec)
 
-    # 4. 14 студентов со статусом OPTED_OUT (не пользовались ботом)
+    # 4. 14 студентов со статусом OPTED_OUT (не пользовались ботом):
+    # Первые 6 входят в Группу 1 (stud_aai_020 .. stud_aai_025), доводя Группу 1 ровно до 20 студентов.
+    # Остальные 8 (stud_aai_026 .. stud_aai_033) принадлежат Группе 2.
     opted_out_grades = [
-        ("stud_aai_020", 94.0),
-        ("stud_aai_021", 91.0),
-        ("stud_aai_022", 89.0),
-        ("stud_aai_023", 88.0),
-        ("stud_aai_024", 86.0),
-        ("stud_aai_025", 92.0),
-        ("stud_aai_026", 95.0),
-        ("stud_aai_027", 85.0),
-        ("stud_aai_028", 83.0),
-        ("stud_aai_029", 80.0),
-        ("stud_aai_030", 79.0),
-        ("stud_aai_031", 90.0),
-        ("stud_aai_032", 87.0),
-        ("stud_aai_033", 82.0),
+        ("stud_aai_020", 94.0, "group_1"),
+        ("stud_aai_021", 91.0, "group_1"),
+        ("stud_aai_022", 89.0, "group_1"),
+        ("stud_aai_023", 88.0, "group_1"),
+        ("stud_aai_024", 86.0, "group_1"),
+        ("stud_aai_025", 92.0, "group_1"),
+        ("stud_aai_026", 95.0, "group_2"),
+        ("stud_aai_027", 85.0, "group_2"),
+        ("stud_aai_028", 83.0, "group_2"),
+        ("stud_aai_029", 80.0, "group_2"),
+        ("stud_aai_030", 79.0, "group_2"),
+        ("stud_aai_031", 90.0, "group_2"),
+        ("stud_aai_032", 87.0, "group_2"),
+        ("stud_aai_033", 82.0, "group_2"),
     ]
-    for sid, in_class in opted_out_grades:
+    for sid, in_class, gid in opted_out_grades:
         rec = StudentAuditRecord(
             student_id=sid,
             in_class_grade=in_class,
@@ -166,6 +230,8 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
             extraction=None,
             ai_depth_score=None,
             telemetry_clean=True,
+            group_id=gid,
+            student_name=STUDENT_NAMES_MAP.get(sid, sid),
         )
         records.append(rec)
 
@@ -176,35 +242,65 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
     return records
 
 
-# Словарь метаданных студентов для обогащения UI (имена, аватары)
-STUDENT_NAMES_MAP = {
-    "stud_aai_042": "Студент К. (Анонимный аудит)",
-    "stud_aai_001": "Алексей Смирнов",
-    "stud_aai_002": "Айгерим Тулегенова",
-    "stud_aai_003": "Даниил Морозов",
-    "stud_aai_004": "Екатерина Волкова",
-    "stud_aai_005": "Жандос Касымов",
-    "stud_aai_006": "Иван Новиков",
-    "stud_aai_007": "Мария Федорова",
-    "stud_aai_008": "Нурлан Сапаров",
-    "stud_aai_009": "Ольга Васильева",
-    "stud_aai_010": "Павел Ковалев",
-    "stud_aai_011": "Руслан Ахметов",
-    "stud_aai_015": "София Михайлова",
-    "stud_aai_019": "Тимур Исаев",
-    "stud_aai_020": "Александр Попов",
-    "stud_aai_021": "Виктория Лебедева",
-    "stud_aai_022": "Дмитрий Козлов",
-    "stud_aai_023": "Елена Соколова",
-    "stud_aai_024": "Игорь Павлов",
-    "stud_aai_025": "Ксения Макарова",
-    "stud_aai_026": "Максим Семенов",
-    "stud_aai_027": "Наталья Голубева",
-    "stud_aai_028": "Олег Виноградов",
-    "stud_aai_029": "Полина Богданова",
-    "stud_aai_030": "Роман Воробьев",
-    "stud_aai_031": "Светлана Медведева",
-    "stud_aai_032": "Татьяна Орлова",
-    "stud_aai_033": "Юрий Тарасов",
-}
+def get_group_records(group_id: str = "group_1") -> List[StudentAuditRecord]:
+    """Возвращает список студентов конкретной группы (по умолчанию Группа 1: 20 студентов)."""
+    all_records = get_canonical_seed_records()
+    return [r for r in all_records if r.group_id == group_id]
+
+
+def seed_sqlite_dialogs():
+    """Сохранение канонических сессий Студента К. и Софии Михайловой в SQLite."""
+    try:
+        from backend.database import save_session, save_turn, get_session
+
+        # Проверяем, есть ли уже сессия stud_k в БД
+        if not get_session("sess_canonical_stud_k"):
+            sess_k_id = "sess_canonical_stud_k"
+            save_session(sess_k_id, "stud_aai_042", "prog_ai_2026", "topic_05_regularization", "COMPLETED")
+            save_turn(
+                session_id=sess_k_id,
+                turn_number=1,
+                student_message="Переобучение происходит, когда веса подстраиваются под специфический шум выборки, создавая избыточную ко-адаптацию нейронов.",
+                system_reply="Отлично. Ты упомянул ко-адаптацию нейронов. Каким именно математическим механизмом метод Dropout предотвращает эту ко-адаптацию в процессе обратного распространения ошибки?",
+                similarity_score=0.15,
+                is_duplicate=False,
+                typing_duration_ms=18000,
+                paste_detected=False,
+            )
+            save_turn(
+                session_id=sess_k_id,
+                turn_number=2,
+                student_message="Dropout случайным образом обнуляет активации нейронов с вероятностью p во время прямого прохода. Это заставляет каждый нейрон обучаться полезным признакам независимо от соседей, имитируя ансамбль подсетей.",
+                system_reply="Глубокое понимание ансамблевой природы Dropout. А что происходит на экстремальных границах? Например, при слишком высокой вероятности отключения нейронов?",
+                similarity_score=0.22,
+                is_duplicate=False,
+                typing_duration_ms=21000,
+                paste_detected=False,
+            )
+            save_turn(
+                session_id=sess_k_id,
+                turn_number=3,
+                student_message="Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?",
+                system_reply="Блестящий исследовательский вопрос! Отключение 80% нейронов катастрофически снижает эффективную емкость сети (model capacity), вызывая недообучение (underfitting). Баланс между регуляризацией и емкостью — фундаментальный компромисс глубокого обучения.",
+                similarity_score=0.18,
+                is_duplicate=False,
+                typing_duration_ms=25000,
+                paste_detected=False,
+            )
+
+        if not get_session("sess_canonical_stud_015"):
+            sess_sofia_id = "sess_canonical_stud_015"
+            save_session(sess_sofia_id, "stud_aai_015", "prog_ai_2026", "topic_05_regularization", "INCOMPLETE_IGNORED")
+            save_turn(
+                session_id=sess_sofia_id,
+                turn_number=1,
+                student_message="Что такое регуляризация?",
+                system_reply="Регуляризация — это совокупность методов, предотвращающих переобучение модели. Попробуй объяснить своими словами: почему нейросеть начинает запоминать шум?",
+                similarity_score=0.10,
+                is_duplicate=False,
+                typing_duration_ms=5000,
+                paste_detected=False,
+            )
+    except Exception as e:
+        print(f"Warning seeding SQLite dialogs: {e}")
 

@@ -31,11 +31,22 @@ from backend.models_schemas import (
     StudentAuditRecord,
 )
 from backend.math_engine import ThemisMathEngine
-from backend.seed_data import get_canonical_seed_records, STUDENT_NAMES_MAP
+from backend.seed_data import (
+    get_canonical_seed_records,
+    STUDENT_NAMES_MAP,
+    seed_sqlite_dialogs,
+    GROUP_1_STUDENT_IDS,
+)
 from backend.rag_service import rag_service
 from backend.llm_service import llm_service
 from backend.similarity_service import similarity_service
-from backend.database import save_session, save_turn
+from backend.database import (
+    save_session,
+    save_turn,
+    get_session,
+    get_turns,
+    get_latest_session_for_student,
+)
 from backend.ingestion_service import ingestion_service, UPLOADS_DIR
 from backend.vector_store import vector_store
 
@@ -52,12 +63,67 @@ engine = ThemisMathEngine(
 
 
 def reset_database():
-    """Сброс состояния до канонической когорты из 28 студентов."""
+    """Сброс состояния до канонической когорты (Группа 1: 20 студентов, Группа 2: 8 студентов)."""
     db_records.clear()
     db_sessions.clear()
     seed_records = get_canonical_seed_records()
     for rec in seed_records:
         db_records[rec.student_id] = rec
+
+    seed_sqlite_dialogs()
+
+    # Загружаем каноническую сессию Студента К. в db_sessions для мгновенного доступа
+    db_sessions["sess_canonical_stud_k"] = {
+        "student_id": "stud_aai_042",
+        "course_id": "prog_ai_2026",
+        "topic_id": "topic_05_regularization",
+        "turns": [
+            {
+                "turn_number": 1,
+                "student": "Переобучение происходит, когда веса подстраиваются под специфический шум выборки, создавая избыточную ко-адаптацию нейронов.",
+                "system": "Отлично. Ты упомянул ко-адаптацию нейронов. Каким именно математическим механизмом метод Dropout предотвращает эту ко-адаптацию в процессе обратного распространения ошибки?",
+                "typing_duration_ms": 18000,
+                "is_duplicate": False,
+                "similarity_score": 0.15,
+            },
+            {
+                "turn_number": 2,
+                "student": "Dropout случайным образом обнуляет активации нейронов с вероятностью p во время прямого прохода. Это заставляет каждый нейрон обучаться полезным признакам независимо от соседей, имитируя ансамбль подсетей.",
+                "system": "Глубокое понимание ансамблевой природы Dropout. А что происходит на экстремальных границах? Например, при слишком высокой вероятности отключения нейронов?",
+                "typing_duration_ms": 21000,
+                "is_duplicate": False,
+                "similarity_score": 0.22,
+            },
+            {
+                "turn_number": 3,
+                "student": "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?",
+                "system": "Блестящий исследовательский вопрос! Отключение 80% нейронов катастрофически снижает эффективную емкость сети (model capacity), вызывая недообучение (underfitting). Баланс между регуляризацией и емкостью — фундаментальный компромисс глубокого обучения.",
+                "typing_duration_ms": 25000,
+                "is_duplicate": False,
+                "similarity_score": 0.18,
+            },
+        ],
+        "created_at": 0,
+        "active": True,
+    }
+
+    db_sessions["sess_canonical_stud_015"] = {
+        "student_id": "stud_aai_015",
+        "course_id": "prog_ai_2026",
+        "topic_id": "topic_05_regularization",
+        "turns": [
+            {
+                "turn_number": 1,
+                "student": "Что такое регуляризация?",
+                "system": "Регуляризация — это совокупность методов, предотвращающих переобучение модели. Попробуй объяснить своими словами: почему нейросеть начинает запоминать шум?",
+                "typing_duration_ms": 5000,
+                "is_duplicate": False,
+                "similarity_score": 0.10,
+            }
+        ],
+        "created_at": 0,
+        "active": True,
+    }
 
 
 @asynccontextmanager
@@ -175,12 +241,130 @@ async def upload_course_lecture(
     }
 
 
+@app.get("/api/v1/students")
+async def get_students_list(group_id: Optional[str] = Query(None)):
+    """
+    Эндпоинт получения списка студентов группы (по умолчанию Группа 1: 20 студентов).
+    Каждый студент представлен отдельным персональным инстансом с метаданными.
+    """
+    students = []
+    for r in db_records.values():
+        rec_group = getattr(r, "group_id", "group_1")
+        if group_id and rec_group != group_id:
+            continue
+        display_name = getattr(r, "student_name", None) or STUDENT_NAMES_MAP.get(r.student_id, r.student_id)
+        students.append({
+            "student_id": r.student_id,
+            "display_name": display_name,
+            "group_id": rec_group,
+            "in_class_grade": r.in_class_grade,
+            "session_status": r.session_status,
+            "ai_depth_score": r.ai_depth_score,
+            "rectified_delta": r.rectified_delta,
+            "z_score": r.z_score,
+            "zone": r.zone,
+            "turns_count": r.turns_count,
+            "has_report": r.extraction is not None,
+        })
+
+    def sort_key(s):
+        if s["student_id"] == "stud_aai_042":
+            return (0, 0)
+        return (1, s["student_id"])
+
+    students.sort(key=sort_key)
+    return students
+
+
+@app.get("/api/v1/session/active/{student_id}")
+async def get_active_session(student_id: str, topic_id: str = Query("topic_05_regularization")):
+    """
+    Эндпоинт восстановления сессии студента из оперативной памяти или SQLite.
+    Позволяет бесшовно восстанавливать историю диалога при F5 или смене студента в UI.
+    """
+    target_session_id = None
+    # 1. Поиск в памяти
+    for s_id, s_data in db_sessions.items():
+        if s_data.get("student_id") == student_id and s_data.get("topic_id") == topic_id:
+            target_session_id = s_id
+            break
+
+    # 2. Если в памяти нет, ищем в SQLite
+    if not target_session_id:
+        row = get_latest_session_for_student(student_id, topic_id)
+        if row:
+            target_session_id = row["session_id"]
+            db_turns = get_turns(target_session_id)
+            db_sessions[target_session_id] = {
+                "student_id": row["student_id"],
+                "course_id": row["course_id"],
+                "topic_id": row["topic_id"],
+                "turns": [
+                    {
+                        "turn_number": t["turn_number"],
+                        "student": t["student_message"],
+                        "system": t["system_reply"],
+                        "typing_duration_ms": t["typing_duration_ms"],
+                        "is_duplicate": bool(t["is_duplicate"]),
+                        "similarity_score": t["similarity_score"],
+                    }
+                    for t in db_turns
+                ],
+                "created_at": 0,
+                "active": row["status"] == "ACTIVE",
+            }
+
+    initial_prompt = rag_service.get_initial_prompt(topic_id)
+
+    if not target_session_id or target_session_id not in db_sessions:
+        return {
+            "found": False,
+            "student_id": student_id,
+            "session_id": None,
+            "status": "OPTED_OUT",
+            "turns": [],
+            "turns_count": 0,
+            "initial_prompt": initial_prompt,
+        }
+
+    sess = db_sessions[target_session_id]
+    non_dup_turns = [t for t in sess["turns"] if not t.get("is_duplicate")]
+    turns_count = len(non_dup_turns)
+    status = "COMPLETED" if turns_count >= settings.TARGET_TURNS else "ACTIVE"
+
+    return {
+        "found": True,
+        "student_id": student_id,
+        "session_id": target_session_id,
+        "status": status,
+        "initial_prompt": initial_prompt,
+        "turns": sess["turns"],
+        "turns_count": turns_count,
+    }
+
+
 @app.post("/api/v1/session/start", response_model=SessionStartResponse)
 async def start_session(req: SessionStartRequest):
     """
     Эндпоинт 1: Инициализация добровольной сократической сессии («Цифровой пандус»).
     Проверяет доступность окна расписания и возвращает контекстный стартовый вопрос.
     """
+    # Если принудительный рестарт не запрошен, проверяем наличие уже существующей активной сессии
+    if not req.force_open:
+        for s_id, s_data in db_sessions.items():
+            if s_data.get("student_id") == req.student_id and s_data.get("topic_id") == req.topic_id and s_data.get("active", True):
+                initial_prompt = rag_service.get_initial_prompt(req.topic_id)
+                return SessionStartResponse(
+                    session_id=s_id,
+                    status="ACTIVE",
+                    time_remaining_seconds=settings.SCHEDULE_WINDOW_MINUTES * 60,
+                    policy_notice=(
+                        "Добровольная сессия Themis Project. Результат не снижает очную оценку "
+                        "и служит только для раскрытия ваших знаний."
+                    ),
+                    initial_prompt=initial_prompt,
+                )
+
     # Создаем новую сессию
     session_id = f"sess_{uuid.uuid4().hex[:8]}"
 
@@ -228,6 +412,31 @@ async def dialog_turn(req: DialogTurnRequest):
     При дублировании или тривиальном перефразировании шаг не увеличивается и балл не растет.
     """
     session = db_sessions.get(req.session_id)
+    if not session:
+        # Проверяем в SQLite (восстановление после перезапуска)
+        row = get_session(req.session_id)
+        if row:
+            db_turns = get_turns(req.session_id)
+            db_sessions[req.session_id] = {
+                "student_id": row["student_id"],
+                "course_id": row["course_id"],
+                "topic_id": row["topic_id"],
+                "turns": [
+                    {
+                        "turn_number": t["turn_number"],
+                        "student": t["student_message"],
+                        "system": t["system_reply"],
+                        "typing_duration_ms": t["typing_duration_ms"],
+                        "is_duplicate": bool(t["is_duplicate"]),
+                        "similarity_score": t["similarity_score"],
+                    }
+                    for t in db_turns
+                ],
+                "created_at": 0,
+                "active": True,
+            }
+            session = db_sessions[req.session_id]
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -378,11 +587,20 @@ async def sync_in_class_grades(req: GradeSyncRequest):
 
 
 @app.get("/api/v1/audit/dashboard", response_model=DashboardResponse)
-async def get_audit_dashboard(topic_id: str = Query("topic_05_regularization")):
+async def get_audit_dashboard(
+    topic_id: str = Query("topic_05_regularization"),
+    group_id: Optional[str] = Query(None)
+):
     """
     Эндпоинт 4: Дашборд распределения сигм и полный список когорты (Консоль преподавателя).
+    Поддерживает фильтрацию по группе (group_id='group_1' — 20 студентов).
+    Если group_id не указан — выдает полную когорту потока (28 студентов).
     """
-    records_list = list(db_records.values())
+    if group_id:
+        records_list = [r for r in db_records.values() if getattr(r, "group_id", "group_1") == group_id]
+    else:
+        records_list = list(db_records.values())
+
     summary = engine.compute_cohort_discrepancy(records_list)
 
     total_students = len(records_list)
@@ -391,10 +609,11 @@ async def get_audit_dashboard(topic_id: str = Query("topic_05_regularization")):
 
     students_data = []
     for r in records_list:
-        display_name = STUDENT_NAMES_MAP.get(r.student_id, r.student_id)
+        display_name = getattr(r, "student_name", None) or STUDENT_NAMES_MAP.get(r.student_id, r.student_id)
         students_data.append({
             "student_id": r.student_id,
             "display_name": display_name,
+            "group_id": getattr(r, "group_id", "group_1"),
             "in_class_grade": r.in_class_grade,
             "ai_depth_score": r.ai_depth_score,
             "session_status": r.session_status,
