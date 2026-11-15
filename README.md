@@ -69,12 +69,12 @@ themis-project/
 
 - **Прогрессивная сократическая свёртка:** $\mathbf{w} = [0.0556, 0.1320, 0.8124]$
 - **Студент К. (`stud_aai_042`):**
-  - $\mathbf{P}_1 = [0.90, 0.10, 0.00]$, $\mathbf{P}_2 = [0.00, 0.85, 0.15]$, $\mathbf{P}_3 = [0.00, 0.05, 0.95]$
+  - $\mathbf{P}_1 = [0.90, 0.10, 0.00], \quad \mathbf{P}_2 = [0.00, 0.85, 0.15], \quad \mathbf{P}_3 = [0.00, 0.05, 0.95]$
   - $\mathbf{P}_{\text{agg}} = [0.05, 0.15, 0.80]$
   - $\mathbb{E}[D^2] = 7.85$
-  - $S_{\text{SOLO}} = 93.5$ (база 92.53 + $B_{\text{init}} = 1.0$)
-  - $K_{\text{density}} = 1.0$, $C_{\text{sample}} = 1.0 \implies S_{\text{depth}} = 93.5$
+  - $S_{\text{SOLO}} = 93.5$ (база $92.53 + B_{\text{init}} = 1.0$)
+  - $K_{\text{density}} = 1.0, \quad C_{\text{sample}} = 1.0 \implies S_{\text{depth}} = 93.5$
   - $G_{\text{prof}} = 70.0 \implies \Delta^+ = +23.5$
-  - Когорта (12 завершенных сессий): $\text{Median}_{\Delta} = +2.5$, $\text{MAD} = 3.8$, $\sigma_{\text{rob}} = 5.6339$
+  - Когорта (12 завершенных сессий): $\text{Median}_{\Delta} = +2.5, \quad \text{MAD} = 3.8, \quad \sigma_{\text{rob}} = 5.6339$
   - Робастный Z-score: $Z^+ = \frac{23.5 - 2.5}{5.6339} = \mathbf{+3.73\sigma}$ (`HIGH_DISCREPANCY`, фиолетовая зона)
 
