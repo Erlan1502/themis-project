@@ -58,6 +58,8 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS student_audits (
             student_id TEXT PRIMARY KEY,
+            student_name TEXT,
+            group_id TEXT DEFAULT 'group_1',
             in_class_grade REAL,
             session_status TEXT,
             turns_count INTEGER DEFAULT 0,
@@ -71,6 +73,16 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Миграция колонок на случай если таблица уже существовала в ранней версии
+    try:
+        cursor.execute("ALTER TABLE student_audits ADD COLUMN student_name TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE student_audits ADD COLUMN group_id TEXT DEFAULT 'group_1'")
+    except sqlite3.OperationalError:
+        pass
 
     conn.commit()
     conn.close()
@@ -201,6 +213,133 @@ def get_student_turns(student_id: str, topic_id: Optional[str] = None) -> List[D
     if not session:
         return []
     return get_turns(session["session_id"])
+
+
+def save_student_audit(
+    student_id: str,
+    student_name: str,
+    group_id: str,
+    in_class_grade: float,
+    session_status: str,
+    turns_count: int = 0,
+    total_tokens: int = 0,
+    ai_depth_score: Optional[float] = None,
+    raw_delta: float = 0.0,
+    rectified_delta: float = 0.0,
+    z_score: float = 0.0,
+    zone: str = "NO_SIGNAL",
+    extraction_json: Optional[str] = None,
+):
+    """Сохранение или обновление записи аудита студента в SQLite."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO student_audits (
+            student_id, student_name, group_id, in_class_grade, session_status,
+            turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
+            z_score, zone, extraction_json, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (
+        student_id, student_name, group_id, in_class_grade, session_status,
+        turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
+        z_score, zone, extraction_json
+    ))
+    conn.commit()
+    conn.close()
+
+
+def bulk_save_student_audits(records: List[Dict[str, Any]]):
+    """Массовое сохранение записей студентов в SQLite."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.executemany("""
+        INSERT OR REPLACE INTO student_audits (
+            student_id, student_name, group_id, in_class_grade, session_status,
+            turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
+            z_score, zone, extraction_json, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, [
+        (
+            r["student_id"],
+            r.get("student_name", r["student_id"]),
+            r.get("group_id", "group_1"),
+            r["in_class_grade"],
+            r["session_status"],
+            r.get("turns_count", 0),
+            r.get("total_tokens", 0),
+            r.get("ai_depth_score"),
+            r.get("raw_delta", 0.0),
+            r.get("rectified_delta", 0.0),
+            r.get("z_score", 0.0),
+            r.get("zone", "NO_SIGNAL"),
+            r.get("extraction_json"),
+        )
+        for r in records
+    ])
+    conn.commit()
+    conn.close()
+
+
+def get_all_student_audits() -> List[Dict[str, Any]]:
+    """Получение всех записей аудита студентов из SQLite."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM student_audits ORDER BY student_id ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_student_audit(student_id: str) -> Optional[Dict[str, Any]]:
+    """Получение записи аудита конкретного студента из SQLite."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM student_audits WHERE student_id = ?", (student_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return dict(row)
+
+
+def delete_student_dialogs(student_id: str):
+    """Полное удаление диалоговых сессий и реплик студента из SQLite (для чистого сброса сессии)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM dialog_turns WHERE session_id IN (SELECT session_id FROM sessions WHERE student_id = ?)", (student_id,))
+    cursor.execute("DELETE FROM sessions WHERE student_id = ?", (student_id,))
+    conn.commit()
+    conn.close()
+
+
+def reset_student_in_db(
+    student_id: str,
+    default_in_class_grade: float = 70.0,
+    student_name: Optional[str] = None,
+    group_id: str = "group_1"
+):
+    """
+    Сброс студента в SQLite к начальному состоянию без ИИ:
+    - Удаляет сессии и реплики из dialog_turns и sessions
+    - Сбрасывает оценку в student_audits до очной (G_prof), ai_depth_score=None, rectified_delta=0, z_score=0, zone='NO_SIGNAL', session_status='OPTED_OUT'
+    """
+    delete_student_dialogs(student_id)
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO student_audits (
+            student_id, student_name, group_id, in_class_grade, session_status,
+            turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
+            z_score, zone, extraction_json, updated_at
+        ) VALUES (?, ?, ?, ?, 'OPTED_OUT', 0, 0, NULL, 0.0, 0.0, 0.0, 'NO_SIGNAL', NULL, CURRENT_TIMESTAMP)
+    """, (
+        student_id,
+        student_name or student_id,
+        group_id,
+        default_in_class_grade,
+    ))
+    conn.commit()
+    conn.close()
 
 
 # Инициализируем БД при импорте модуля

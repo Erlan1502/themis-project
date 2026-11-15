@@ -5,8 +5,8 @@ seed_data.py
 Курс: prog_ai_2026 ("Programming AI")
 Тема: topic_05_regularization ("Regularization & Dropout Dynamics")
 
-Когорта из 28 студентов:
-- 14 студентов со статусом OPTED_OUT (не заходили в бот, очные оценки 78–95 без изменений).
+Когорта из 20 студентов (демонстрационная Группа 1):
+- 6 студентов со статусом OPTED_OUT (не заходили в бот, очные оценки 86–94 без изменений).
 - 2 студента со статусом INCOMPLETE_IGNORED (случайный вход, 1 реплика, Delta_pos = 0.0).
 - 12 студентов со статусом COMPLETED (полная сессия из 3 реплик):
     * 9 студентов в зоне NORMAL (Green)
@@ -45,14 +45,6 @@ STUDENT_NAMES_MAP = {
     "stud_aai_023": "Елена Соколова",
     "stud_aai_024": "Игорь Павлов",
     "stud_aai_025": "Ксения Макарова",
-    "stud_aai_026": "Максим Семенов",
-    "stud_aai_027": "Наталья Голубева",
-    "stud_aai_028": "Олег Виноградов",
-    "stud_aai_029": "Полина Богданова",
-    "stud_aai_030": "Роман Воробьев",
-    "stud_aai_031": "Светлана Медведева",
-    "stud_aai_032": "Татьяна Орлова",
-    "stud_aai_033": "Юрий Тарасов",
 }
 
 # Идентификаторы 20 студентов, входящих в Группу 1
@@ -201,9 +193,8 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
         )
         records.append(rec)
 
-    # 4. 14 студентов со статусом OPTED_OUT (не пользовались ботом):
-    # Первые 6 входят в Группу 1 (stud_aai_020 .. stud_aai_025), доводя Группу 1 ровно до 20 студентов.
-    # Остальные 8 (stud_aai_026 .. stud_aai_033) принадлежат Группе 2.
+    # 4. 6 студентов со статусом OPTED_OUT (не пользовались ботом, очные оценки 86-94):
+    # Входят в единую демонстрационную Группу 1 (stud_aai_020 .. stud_aai_025, ровно 20 студентов в когорте).
     opted_out_grades = [
         ("stud_aai_020", 94.0, "group_1"),
         ("stud_aai_021", 91.0, "group_1"),
@@ -211,14 +202,6 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
         ("stud_aai_023", 88.0, "group_1"),
         ("stud_aai_024", 86.0, "group_1"),
         ("stud_aai_025", 92.0, "group_1"),
-        ("stud_aai_026", 95.0, "group_2"),
-        ("stud_aai_027", 85.0, "group_2"),
-        ("stud_aai_028", 83.0, "group_2"),
-        ("stud_aai_029", 80.0, "group_2"),
-        ("stud_aai_030", 79.0, "group_2"),
-        ("stud_aai_031", 90.0, "group_2"),
-        ("stud_aai_032", 87.0, "group_2"),
-        ("stud_aai_033", 82.0, "group_2"),
     ]
     for sid, in_class, gid in opted_out_grades:
         rec = StudentAuditRecord(

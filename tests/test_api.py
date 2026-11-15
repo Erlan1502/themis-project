@@ -115,16 +115,16 @@ def test_sync_in_class_grades(client):
 def test_dashboard(client):
     """
     Тест эндпоинта 4: получение дашборда когорты.
-    Инварианты: 28 студентов, 12 completed, 16 opted_out/incomplete,
+    Инварианты: 20 студентов Группы 1, 12 completed, 8 opted_out/incomplete,
     median=2.5, mad=3.8, sigma=5.63, alerts: green=9, yellow=2, red=0, purple=1.
     """
     resp = client.get("/api/v1/audit/dashboard?topic_id=topic_05_regularization")
     assert resp.status_code == 200
     data = resp.json()
     assert data["project"] == "Themis Project"
-    assert data["total_students"] == 28
+    assert data["total_students"] == 20
     assert data["sessions_completed"] == 12
-    assert data["opted_out_or_incomplete"] == 16
+    assert data["opted_out_or_incomplete"] == 8
     assert data["distribution"]["median_delta"] == 2.5
     assert data["distribution"]["mad"] == 3.8
     assert data["distribution"]["robust_sigma"] == 5.63
@@ -136,7 +136,7 @@ def test_dashboard(client):
     assert data["alerts_count"]["yellow"] == 2
     assert data["alerts_count"]["red"] == 0
     assert data["alerts_count"]["purple"] == 1
-    assert len(data["students"]) == 28
+    assert len(data["students"]) == 20
 
 
 def test_report_stud_k(client):

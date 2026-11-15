@@ -92,3 +92,64 @@ def test_dashboard_group_1_distribution_math(client):
     assert data["alerts_count"]["yellow"] == 2
     assert data["alerts_count"]["green"] == 9
 
+
+def test_reset_student_to_initial_state(client):
+    """
+    Проверка отката Студента К. до начальной очной оценки без ИИ:
+    - Сбрасывает оценку 93.5 до None
+    - Очищает реплики диалога и сессии в памяти и SQLite
+    - Пересчитывает когорту (completed становится 11, purple становится 0)
+    """
+    # 1. Откатываем студента
+    resp = client.post("/api/v1/student/stud_aai_042/reset")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "SUCCESS"
+    assert data["student_id"] == "stud_aai_042"
+    assert data["in_class_grade"] == 70.0
+    assert data["ai_depth_score"] is None
+    assert data["rectified_delta"] == 0.0
+    assert data["session_status"] == "OPTED_OUT"
+    assert data["zone"] == "NO_SIGNAL"
+
+    # 2. Проверяем, что активная сессия и реплики стерты
+    sess_resp = client.get("/api/v1/session/active/stud_aai_042")
+    assert sess_resp.status_code == 200
+    sess_data = sess_resp.json()
+    assert sess_data["found"] is False
+    assert len(sess_data["turns"]) == 0
+
+    # 3. Проверяем дашборд: purple уменьшился до 0, completed стало 11
+    dash_resp = client.get("/api/v1/audit/dashboard")
+    assert dash_resp.status_code == 200
+    dash_data = dash_resp.json()
+    assert dash_data["sessions_completed"] == 11
+    assert dash_data["opted_out_or_incomplete"] == 9
+    assert dash_data["alerts_count"]["purple"] == 0
+
+
+def test_restore_canonical_benchmark_for_student_k(client):
+    """
+    Проверка быстрого восстановления канонического эталона (93.5, +3.73σ)
+    после сброса.
+    """
+    # Сначала сбрасываем
+    client.post("/api/v1/student/stud_aai_042/reset")
+
+    # Затем восстанавливаем канонический эталон
+    resp = client.post("/api/v1/student/stud_aai_042/restore_canonical")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "SUCCESS"
+    assert data["ai_depth_score"] == 93.5
+    assert data["rectified_delta"] == 23.5
+    assert data["z_score"] == 3.73
+    assert data["zone"] == "HIGH_DISCREPANCY"
+
+    # Проверяем восстановление сессии и реплик
+    sess_resp = client.get("/api/v1/session/active/stud_aai_042")
+    assert sess_resp.status_code == 200
+    assert sess_resp.json()["found"] is True
+    assert len(sess_resp.json()["turns"]) == 3
+
+

@@ -41,11 +41,18 @@ from backend.rag_service import rag_service
 from backend.llm_service import llm_service
 from backend.similarity_service import similarity_service
 from backend.database import (
+    get_connection,
     save_session,
     save_turn,
     get_session,
     get_turns,
     get_latest_session_for_student,
+    save_student_audit,
+    bulk_save_student_audits,
+    get_all_student_audits,
+    get_student_audit,
+    delete_student_dialogs,
+    reset_student_in_db,
 )
 from backend.ingestion_service import ingestion_service, UPLOADS_DIR
 from backend.vector_store import vector_store
@@ -62,74 +69,127 @@ engine = ThemisMathEngine(
 )
 
 
-def reset_database():
-    """Сброс состояния до канонической когорты (Группа 1: 20 студентов, Группа 2: 8 студентов)."""
+def sync_records_to_sqlite():
+    """Синхронизирует все записи db_records в таблицу student_audits SQLite для полной персистентности."""
+    items = []
+    for r in db_records.values():
+        items.append({
+            "student_id": r.student_id,
+            "student_name": getattr(r, "student_name", None) or STUDENT_NAMES_MAP.get(r.student_id, r.student_id),
+            "group_id": getattr(r, "group_id", "group_1"),
+            "in_class_grade": r.in_class_grade,
+            "session_status": r.session_status,
+            "turns_count": r.turns_count,
+            "total_tokens": r.total_tokens,
+            "ai_depth_score": r.ai_depth_score,
+            "raw_delta": r.raw_delta,
+            "rectified_delta": r.rectified_delta,
+            "z_score": r.z_score,
+            "zone": r.zone,
+            "extraction_json": r.extraction.model_dump_json() if r.extraction else None,
+        })
+    bulk_save_student_audits(items)
+
+
+def reset_database(load_from_db_if_exists: bool = False):
+    """
+    Инициализация состояния когорты (20 студентов Группы 1).
+    При load_from_db_if_exists=True восстанавливает актуальное состояние студентов из SQLite.
+    При сбросе инициализирует каноническую когорту и синхронизирует её в SQLite.
+    """
     db_records.clear()
     db_sessions.clear()
-    seed_records = get_canonical_seed_records()
-    for rec in seed_records:
-        db_records[rec.student_id] = rec
 
-    seed_sqlite_dialogs()
+    existing_audits = get_all_student_audits() if load_from_db_if_exists else []
+    if existing_audits and len(existing_audits) == 20:
+        for row in existing_audits:
+            extraction = None
+            if row.get("extraction_json"):
+                try:
+                    extraction = AuditExtractionResult.model_validate_json(row["extraction_json"])
+                except Exception:
+                    extraction = None
+            rec = StudentAuditRecord(
+                student_id=row["student_id"],
+                student_name=row.get("student_name") or STUDENT_NAMES_MAP.get(row["student_id"], row["student_id"]),
+                group_id=row.get("group_id", "group_1"),
+                in_class_grade=row["in_class_grade"],
+                session_status=row["session_status"],
+                turns_count=row["turns_count"] or 0,
+                total_tokens=row["total_tokens"] or 0,
+                extraction=extraction,
+                ai_depth_score=row["ai_depth_score"],
+                raw_delta=row["raw_delta"] or 0.0,
+                rectified_delta=row["rectified_delta"] or 0.0,
+                z_score=row["z_score"] or 0.0,
+                zone=row["zone"] or "NO_SIGNAL",
+                telemetry_clean=True,
+            )
+            db_records[row["student_id"]] = rec
+        engine.compute_cohort_discrepancy(list(db_records.values()))
+    else:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM student_audits")
+        conn.commit()
+        conn.close()
 
-    # Загружаем каноническую сессию Студента К. в db_sessions для мгновенного доступа
-    db_sessions["sess_canonical_stud_k"] = {
-        "student_id": "stud_aai_042",
-        "course_id": "prog_ai_2026",
-        "topic_id": "topic_05_regularization",
-        "turns": [
-            {
-                "turn_number": 1,
-                "student": "Переобучение происходит, когда веса подстраиваются под специфический шум выборки, создавая избыточную ко-адаптацию нейронов.",
-                "system": "Отлично. Ты упомянул ко-адаптацию нейронов. Каким именно математическим механизмом метод Dropout предотвращает эту ко-адаптацию в процессе обратного распространения ошибки?",
-                "typing_duration_ms": 18000,
-                "is_duplicate": False,
-                "similarity_score": 0.15,
-            },
-            {
-                "turn_number": 2,
-                "student": "Dropout случайным образом обнуляет активации нейронов с вероятностью p во время прямого прохода. Это заставляет каждый нейрон обучаться полезным признакам независимо от соседей, имитируя ансамбль подсетей.",
-                "system": "Глубокое понимание ансамблевой природы Dropout. А что происходит на экстремальных границах? Например, при слишком высокой вероятности отключения нейронов?",
-                "typing_duration_ms": 21000,
-                "is_duplicate": False,
-                "similarity_score": 0.22,
-            },
-            {
-                "turn_number": 3,
-                "student": "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?",
-                "system": "Блестящий исследовательский вопрос! Отключение 80% нейронов катастрофически снижает эффективную емкость сети (model capacity), вызывая недообучение (underfitting). Баланс между регуляризацией и емкостью — фундаментальный компромисс глубокого обучения.",
-                "typing_duration_ms": 25000,
-                "is_duplicate": False,
-                "similarity_score": 0.18,
-            },
-        ],
-        "created_at": 0,
-        "active": True,
-    }
+        seed_records = get_canonical_seed_records()
+        for rec in seed_records:
+            db_records[rec.student_id] = rec
+        seed_sqlite_dialogs()
+        sync_records_to_sqlite()
 
-    db_sessions["sess_canonical_stud_015"] = {
-        "student_id": "stud_aai_015",
-        "course_id": "prog_ai_2026",
-        "topic_id": "topic_05_regularization",
-        "turns": [
-            {
-                "turn_number": 1,
-                "student": "Что такое регуляризация?",
-                "system": "Регуляризация — это совокупность методов, предотвращающих переобучение модели. Попробуй объяснить своими словами: почему нейросеть начинает запоминать шум?",
-                "typing_duration_ms": 5000,
-                "is_duplicate": False,
-                "similarity_score": 0.10,
+    # Загружаем сессии из SQLite в db_sessions при наличии
+    if get_session("sess_canonical_stud_k"):
+        turns = get_turns("sess_canonical_stud_k")
+        if turns:
+            db_sessions["sess_canonical_stud_k"] = {
+                "student_id": "stud_aai_042",
+                "course_id": "prog_ai_2026",
+                "topic_id": "topic_05_regularization",
+                "turns": [
+                    {
+                        "turn_number": t["turn_number"],
+                        "student": t["student_message"],
+                        "system": t["system_reply"],
+                        "typing_duration_ms": t["typing_duration_ms"],
+                        "is_duplicate": bool(t["is_duplicate"]),
+                        "similarity_score": t["similarity_score"],
+                    }
+                    for t in turns
+                ],
+                "created_at": 0,
+                "active": True,
             }
-        ],
-        "created_at": 0,
-        "active": True,
-    }
+
+    if get_session("sess_canonical_stud_015"):
+        turns = get_turns("sess_canonical_stud_015")
+        if turns:
+            db_sessions["sess_canonical_stud_015"] = {
+                "student_id": "stud_aai_015",
+                "course_id": "prog_ai_2026",
+                "topic_id": "topic_05_regularization",
+                "turns": [
+                    {
+                        "turn_number": t["turn_number"],
+                        "student": t["student_message"],
+                        "system": t["system_reply"],
+                        "typing_duration_ms": t["typing_duration_ms"],
+                        "is_duplicate": bool(t["is_duplicate"]),
+                        "similarity_score": t["similarity_score"],
+                    }
+                    for t in turns
+                ],
+                "created_at": 0,
+                "active": True,
+            }
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Инициализация при старте
-    reset_database()
+    # Инициализация при старте с подтягиванием персистентного состояния из SQLite
+    reset_database(load_from_db_if_exists=True)
     yield
     # Очистка при завершении
 
@@ -549,6 +609,9 @@ async def dialog_turn(req: DialogTurnRequest):
         record.session_status = "INCOMPLETE_IGNORED"
         confidence_str = f"LOW (N = {turn_number}/{settings.TARGET_TURNS})"
 
+    # Сохраняем в SQLite для персистентности
+    sync_records_to_sqlite()
+
     return DialogTurnResponse(
         session_id=req.session_id,
         turn_number=turn_number,
@@ -714,13 +777,131 @@ async def get_student_report(student_id: str, topic_id: str = Query("topic_05_re
     )
 
 
+@app.post("/api/v1/student/{student_id}/reset")
+async def reset_single_student(student_id: str):
+    """
+    Сброс конкретного студента до начального состояния:
+    - Очищает историю диалогов и сессий в SQLite и в памяти
+    - Сбрасывает оценку S_depth до None, статус сессии до OPTED_OUT
+    - Сохраняет исходную очную оценку G_prof
+    - Пересчитывает когортные метрики ThemisMathEngine
+    - Синхронизирует обновленное состояние в SQLite
+    """
+    if student_id not in db_records:
+        raise HTTPException(status_code=404, detail="Студент не найден в когорте")
+
+    # 1. Удаляем сессии студента из оперативной памяти
+    sessions_to_remove = [
+        s_id for s_id, s_data in db_sessions.items()
+        if s_data.get("student_id") == student_id
+    ]
+    for s_id in sessions_to_remove:
+        del db_sessions[s_id]
+
+    # 2. Удаляем сессии и реплики из SQLite
+    delete_student_dialogs(student_id)
+
+    # 3. Сбрасываем запись студента
+    record = db_records[student_id]
+    record.session_status = "OPTED_OUT"
+    record.turns_count = 0
+    record.total_tokens = 0
+    record.ai_depth_score = None
+    record.raw_delta = 0.0
+    record.rectified_delta = 0.0
+    record.z_score = 0.0
+    record.zone = "NO_SIGNAL"
+    record.extraction = None
+
+    # 4. Пересчитываем когортные метрики среди оставшихся завершенных сессий
+    engine.compute_cohort_discrepancy(list(db_records.values()))
+
+    # 5. Синхронизируем всех студентов в SQLite
+    sync_records_to_sqlite()
+
+    return {
+        "status": "SUCCESS",
+        "message": f"Студент {student_id} успешно сброшен к начальной оценке ({record.in_class_grade}) без ИИ.",
+        "student_id": student_id,
+        "in_class_grade": record.in_class_grade,
+        "session_status": record.session_status,
+        "ai_depth_score": record.ai_depth_score,
+        "rectified_delta": record.rectified_delta,
+        "z_score": record.z_score,
+        "zone": record.zone,
+    }
+
+
+@app.post("/api/v1/student/{student_id}/restore_canonical")
+async def restore_canonical_student(student_id: str):
+    """
+    Восстановление канонического эталонного состояния студента (для быстрой демонстрации Студента К. 93.5).
+    """
+    canonical_list = get_canonical_seed_records()
+    target_canonical = next((r for r in canonical_list if r.student_id == student_id), None)
+    if not target_canonical:
+        raise HTTPException(status_code=404, detail="Каноническая запись для студента не найдена")
+
+    db_records[student_id] = target_canonical
+
+    if student_id == "stud_aai_042":
+        seed_sqlite_dialogs()
+        db_sessions["sess_canonical_stud_k"] = {
+            "student_id": "stud_aai_042",
+            "course_id": "prog_ai_2026",
+            "topic_id": "topic_05_regularization",
+            "turns": [
+                {
+                    "turn_number": 1,
+                    "student": "Переобучение происходит, когда веса подстраиваются под специфический шум выборки, создавая избыточную ко-адаптацию нейронов.",
+                    "system": "Отлично. Ты упомянул ко-адаптацию нейронов. Каким именно математическим механизмом метод Dropout предотвращает эту ко-адаптацию в процессе обратного распространения ошибки?",
+                    "typing_duration_ms": 18000,
+                    "is_duplicate": False,
+                    "similarity_score": 0.15,
+                },
+                {
+                    "turn_number": 2,
+                    "student": "Dropout случайным образом обнуляет активации нейронов с вероятностью p во время прямого прохода. Это заставляет каждый нейрон обучаться полезным признакам независимо от соседей, имитируя ансамбль подсетей.",
+                    "system": "Глубокое понимание ансамблевой природы Dropout. А что происходит на экстремальных границах? Например, при слишком высокой вероятности отключения нейронов?",
+                    "typing_duration_ms": 21000,
+                    "is_duplicate": False,
+                    "similarity_score": 0.22,
+                },
+                {
+                    "turn_number": 3,
+                    "student": "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?",
+                    "system": "Блестящий исследовательский вопрос! Отключение 80% нейронов катастрофически снижает эффективную емкость сети (model capacity), вызывая недообучение (underfitting). Баланс между регуляризацией и емкостью — фундаментальный компромисс глубокого обучения.",
+                    "typing_duration_ms": 25000,
+                    "is_duplicate": False,
+                    "similarity_score": 0.18,
+                },
+            ],
+            "created_at": 0,
+            "active": True,
+        }
+
+    engine.compute_cohort_discrepancy(list(db_records.values()))
+    sync_records_to_sqlite()
+
+    return {
+        "status": "SUCCESS",
+        "message": f"Канонический эталон для студента {student_id} восстановлен.",
+        "student_id": student_id,
+        "in_class_grade": target_canonical.in_class_grade,
+        "ai_depth_score": target_canonical.ai_depth_score,
+        "rectified_delta": target_canonical.rectified_delta,
+        "z_score": target_canonical.z_score,
+        "zone": target_canonical.zone,
+    }
+
+
 @app.post("/api/v1/demo/reset")
 async def demo_reset():
     """
     Эндпоинт 6: Сброс базы данных до исходного канонического состояния (Use Case).
     """
-    reset_database()
-    return {"status": "SUCCESS", "message": "Demo data reset to canonical 28-student cohort."}
+    reset_database(load_from_db_if_exists=False)
+    return {"status": "SUCCESS", "message": "Demo data reset to canonical 20-student cohort."}
 
 
 # =====================================================================

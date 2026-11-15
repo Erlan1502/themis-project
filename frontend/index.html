@@ -184,13 +184,21 @@
           </div>
         </div>
 
-        <div class="flex items-center space-x-2">
+        <div class="flex items-center space-x-2 flex-wrap gap-1">
           <select id="student-selector" onchange="onStudentChange(this.value)" class="bg-slate-900 border border-violet-500/50 text-violet-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-violet-400 font-medium cursor-pointer shadow-inner">
             <!-- Populated dynamically with all 20 students of Group 1 -->
           </select>
-          <button onclick="restartCurrentStudentSession()" class="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold border border-slate-700 transition flex items-center space-x-1 shrink-0" title="Начать новую сократическую сессию для выбранного студента">
+          <button onclick="resetCurrentStudent()" class="px-3.5 py-2.5 bg-rose-950/60 hover:bg-rose-900 text-rose-300 hover:text-rose-100 rounded-xl text-xs font-semibold border border-rose-700/60 transition flex items-center space-x-1.5 shrink-0 shadow" title="Откатить оценку студента до начальной очной (стереть сессию ИИ и вернуть в статус 'Без бота')">
+            <span>↺</span>
+            <span>Откатить до начальной</span>
+          </button>
+          <button onclick="restoreCanonicalStudent()" class="px-3.5 py-2.5 bg-violet-950/70 hover:bg-violet-900 text-violet-300 hover:text-white rounded-xl text-xs font-semibold border border-violet-600/60 transition flex items-center space-x-1.5 shrink-0 shadow" title="Загрузить канонический эталон (93.5, Z=+3.73σ)">
+            <span>⭐</span>
+            <span>Эталон (93.5)</span>
+          </button>
+          <button onclick="restartCurrentStudentSession()" class="px-3 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold border border-slate-700 transition flex items-center space-x-1 shrink-0" title="Очистить экран чата и начать сессию заново">
             <span>🔄</span>
-            <span>Новая сессия</span>
+            <span>Очистить чат</span>
           </button>
         </div>
       </div>
@@ -414,15 +422,15 @@
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl">
-          <div class="text-xs text-slate-400 font-medium">Всего студентов потока</div>
-          <div class="text-2xl font-bold font-mono text-white mt-1" id="kpi-total">28</div>
-          <div class="text-xs text-slate-500 mt-1">Очный журнал сформирован</div>
+          <div class="text-xs text-slate-400 font-medium">Студентов в группе</div>
+          <div class="text-2xl font-bold font-mono text-white mt-1" id="kpi-total">20</div>
+          <div class="text-xs text-slate-500 mt-1">Очный журнал Группы 1</div>
         </div>
 
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl">
           <div class="text-xs text-slate-400 font-medium">Оценка без изменений (Opted-Out)</div>
-          <div class="text-2xl font-bold font-mono text-slate-300 mt-1" id="kpi-opted-out">16</div>
-          <div class="text-xs text-slate-500 mt-1">14 не заходили + 2 случайных</div>
+          <div class="text-2xl font-bold font-mono text-slate-300 mt-1" id="kpi-opted-out">8</div>
+          <div class="text-xs text-slate-500 mt-1">6 не заходили + 2 случайных</div>
         </div>
 
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl">
@@ -585,21 +593,20 @@
 
       </div>
 
-      <!-- Cohort Table of all 28 Students -->
+      <!-- Cohort Table of all 20 Students -->
       <div class="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-2xl">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Ведомость группы и диагностические расхождения (28 студентов)</h3>
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Ведомость группы и диагностические расхождения (20 студентов)</h3>
             <p class="text-xs text-slate-400 mt-0.5">Очные оценки неприкосновенны; отображаются сессионный статус и ректифицированные дельты</p>
           </div>
 
           <!-- Table Filters -->
           <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs flex-wrap gap-1">
-            <button onclick="filterTable('group1')" class="tbl-filter px-3 py-1 rounded-lg bg-violet-600 text-white font-medium" data-filter="group1">Группа 1 (20)</button>
-            <button onclick="filterTable('all')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="all">Весь поток (28)</button>
+            <button onclick="filterTable('all')" class="tbl-filter px-3 py-1 rounded-lg bg-violet-600 text-white font-medium" data-filter="all">Все студенты (20)</button>
             <button onclick="filterTable('alerts')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="alerts">Внимание (3)</button>
             <button onclick="filterTable('normal')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="normal">Согласие (9)</button>
-            <button onclick="filterTable('opted')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="opted">Без бота</button>
+            <button onclick="filterTable('opted')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="opted">Без бота (8)</button>
           </div>
         </div>
 
@@ -1056,7 +1063,7 @@
             badge.textContent = `Шаг 3/3 (Сессия завершена)`;
             badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
             if (cardStatus) {
-              const depthScore = student.ai_depth_score ? student.ai_depth_score.toFixed(1) : '93.5';
+              const depthScore = (student.ai_depth_score != null) ? student.ai_depth_score.toFixed(1) : '—';
               cardStatus.textContent = `Сессия завершена (${depthScore})`;
               cardStatus.className = 'text-violet-400 font-semibold';
             }
@@ -1083,13 +1090,75 @@
           badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700';
           if (cardStatus) {
             cardStatus.textContent = student.session_status === 'OPTED_OUT' 
-              ? 'Оценка в журнале (Opted-Out)' 
+              ? 'Оценка в журнале (Без бота, очная)' 
               : 'Ожидает начала (Добровольный вход)';
             cardStatus.className = 'text-slate-400 font-semibold';
           }
         }
       } catch (err) {
         console.error('Error loading student session:', err);
+      }
+    }
+
+    async function resetCurrentStudent() {
+      if (!confirm(`Откатить студента ${currentStudentId} до начальной очной оценки без ИИ? Вся сессия и реплики диалога будут удалены из базы данных.`)) {
+        return;
+      }
+      try {
+        const res = await fetch(`/api/v1/student/${currentStudentId}/reset`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.removeItem('themis_session_' + currentStudentId);
+          currentSessionId = null;
+          currentTurnNumber = 0;
+          await loadStudentSession(currentStudentId);
+          await refreshDashboard();
+          showToast('Оценка сброшена', `Студент ${currentStudentId} возвращен к начальной очной оценке (${data.in_class_grade}) без ИИ.`, 'rose');
+        } else {
+          showToast('Ошибка сброса', data.detail || 'Не удалось сбросить студента', 'rose');
+        }
+      } catch (err) {
+        console.error('Reset student error:', err);
+      }
+    }
+
+    async function restoreCanonicalStudent() {
+      try {
+        const res = await fetch(`/api/v1/student/${currentStudentId}/restore_canonical`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          await loadStudentSession(currentStudentId);
+          await refreshDashboard();
+          showToast('Эталон загружен', `Канонический эталон для ${currentStudentId} восстановлен (ИИ-оценка = ${data.ai_depth_score}, Z = +${data.z_score.toFixed(2)}σ).`, 'purple');
+        } else {
+          showToast('Ошибка эталона', data.detail || 'Не удалось восстановить эталон', 'rose');
+        }
+      } catch (err) {
+        console.error('Restore canonical error:', err);
+      }
+    }
+
+    async function resetStudentById(studentId) {
+      if (!confirm(`Откатить студента ${studentId} до начальной очной оценки без ИИ?`)) {
+        return;
+      }
+      try {
+        const res = await fetch(`/api/v1/student/${studentId}/reset`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.removeItem('themis_session_' + studentId);
+          if (currentStudentId === studentId) {
+            currentSessionId = null;
+            currentTurnNumber = 0;
+            await loadStudentSession(studentId);
+          }
+          await refreshDashboard();
+          showToast('Студент сброшен', `Оценка студента ${studentId} возвращена к очной (${data.in_class_grade}) без ИИ.`, 'rose');
+        } else {
+          showToast('Ошибка сброса', data.detail || 'Не удалось сбросить студента', 'rose');
+        }
+      } catch (err) {
+        console.error('Error resetting student:', err);
       }
     }
 
@@ -1312,9 +1381,7 @@
           ? `<span class="font-mono font-semibold text-slate-200">${s.ai_depth_score.toFixed(1)}</span>`
           : `<span class="text-slate-600 font-mono">—</span>`;
 
-        const groupTag = s.group_id === 'group_1' 
-          ? '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-violet-950/70 text-violet-300 border border-violet-500/30">Гр. 1</span>'
-          : '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700">Гр. 2</span>';
+        const groupTag = '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-violet-950/70 text-violet-300 border border-violet-500/30">Гр. 1</span>';
 
         tr.innerHTML = `
           <td class="py-3 px-4">
@@ -1326,11 +1393,12 @@
           <td class="py-3 px-3 text-center">${deltaDisplay}</td>
           <td class="py-3 px-3 text-center">${zDisplay}</td>
           <td class="py-3 px-3 text-center">${badgeHtml}</td>
-          <td class="py-3 px-4 text-right">
+          <td class="py-3 px-4 text-right space-x-1 whitespace-nowrap">
             ${s.has_report 
               ? `<button onclick="viewReport('${s.student_id}')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-violet-300 font-medium transition">Отчет</button>`
-              : `<span class="text-slate-600 text-[11px]">Нет данных</span>`
+              : `<span class="text-slate-600 text-[11px] mr-1">Без отчета</span>`
             }
+            <button onclick="resetStudentById('${s.student_id}')" class="px-2 py-1 rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 text-[11px] font-mono border border-rose-800/40 transition" title="Откатить студента до очной оценки (стереть ИИ-сессию)">↺ Сброс</button>
           </td>
         `;
 
@@ -1347,9 +1415,7 @@
         }
       });
 
-      if (type === 'group1') {
-        renderTable(cachedStudents.filter(s => s.group_id === 'group_1'));
-      } else if (type === 'all') {
+      if (type === 'all') {
         renderTable(cachedStudents);
       } else if (type === 'alerts') {
         renderTable(cachedStudents.filter(s => s.zone === 'HIGH_DISCREPANCY' || s.zone === 'WATCHLIST' || s.zone === 'AUDIT_TRIGGER'));

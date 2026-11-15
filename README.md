@@ -55,7 +55,7 @@ themis-project/
 │   ├── math_engine.py        # Детерминированное психометрическое ядро ThemisMathEngine
 │   ├── rag_service.py        # RAG-сервис по материалам занятия 05 (Dropout & Regularization)
 │   ├── llm_service.py        # Qwen3.5 LLM клиент + детерминированный Demo Mock fallback
-│   ├── seed_data.py          # Каноническая когорта из 28 студентов (prog_ai_2026)
+│   ├── seed_data.py          # Каноническая когорта из 20 студентов (prog_ai_2026)
 │   └── main.py               # FastAPI приложение и эндпоинты
 ├── frontend/
 │   └── index.html            # SPA: Student Socratic Ramp + Professor Audit Console (Tailwind + Chart.js)
