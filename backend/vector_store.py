@@ -37,7 +37,8 @@ class BgeM3EmbeddingFunction(EmbeddingFunction[Documents]):
                 from sentence_transformers import SentenceTransformer
                 logger.info(f"Загрузка модели эмбеддингов {self.model_name}...")
                 self._model = SentenceTransformer(self.model_name)
-                logger.info(f"Модель {self.model_name} успешно загружена.")
+                self._model.max_seq_length = 512
+                logger.info(f"Модель {self.model_name} успешно загружена (max_seq_length=512).")
             except Exception as e:
                 logger.warning(f"Не удалось загрузить {self.model_name}: {e}. Переключение на легкую модель cointegrated/rubert-tiny2")
                 try:

@@ -123,8 +123,8 @@ def index_all():
 
         # 1. Чанкирование Markdown
         chunks = chunk_markdown(body, topic_id, week_no)
-        print(f"\n[Неделя {week_no}] {title}")
-        print(f"  Чанков: {len(chunks)}, Терминов: {len(glossary)}")
+        print(f"\n[Неделя {week_no}] {title}", flush=True)
+        print(f"  Чанков: {len(chunks)}, Терминов: {len(glossary)}", flush=True)
 
         # 2. Индексация в HNSW граф ChromaDB
         indexed = vector_store.add_slides(
@@ -157,6 +157,8 @@ def index_all():
             glossary=glossary,
             slides_count=len(chunks)
         )
+        conn.commit()
+        print(f"  -> Неделя {week_no} успешно сохранена (проиндексировано: {indexed} чанков).", flush=True)
 
     conn.commit()
     conn.close()
