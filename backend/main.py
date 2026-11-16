@@ -125,6 +125,8 @@ def reset_database(load_from_db_if_exists: bool = False):
                 zone=row["zone"] or "NO_SIGNAL",
                 telemetry_clean=True,
             )
+            if rec.extraction and rec.turns_count >= settings.TARGET_TURNS:
+                engine.compute_individual_depth(rec)
             db_records[row["student_id"]] = rec
         engine.compute_cohort_discrepancy(list(db_records.values()))
     else:
@@ -728,6 +730,8 @@ async def get_student_report(student_id: str, topic_id: str = Query("topic_05_re
         )
 
     ext = rec.extraction
+    if rec.e_d_squared is None and rec.extraction:
+        engine.compute_individual_depth(rec)
     p1, p2, p3 = rec.agg_probabilities
 
     # Определяем доминирующий когнитивный уровень

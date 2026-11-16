@@ -493,102 +493,10 @@
         </div>
 
         <!-- Right 5 cols: AI Discrepancy Evidence Card -->
-        <div class="lg:col-span-5 bg-slate-950 border border-violet-500/40 rounded-2xl p-5 shadow-2xl flex flex-col relative overflow-hidden">
-          
-          <div class="absolute top-0 right-0 w-32 h-32 bg-violet-600/10 rounded-full blur-2xl pointer-events-none"></div>
-
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-            <div class="flex items-center space-x-2">
-              <span class="text-lg">🟣</span>
-              <div>
-                <h3 class="text-sm font-bold text-white">ДОКАЗАТЕЛЬНАЯ КАРТОЧКА АУДИТА</h3>
-                <p class="text-xs text-violet-400 font-mono">Студент К. (stud_aai_042)</p>
-              </div>
-            </div>
-            <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/40">
-              +3.73σ (p &lt; 0.001)
-            </span>
+        <div id="evidence-card-panel" class="lg:col-span-5 bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-2xl flex flex-col relative overflow-hidden transition-all duration-300">
+          <div id="evidence-card-content" class="flex flex-col h-full">
+            <!-- Dynamically populated by renderEvidenceCard() -->
           </div>
-
-          <!-- Non-credit warning notice -->
-          <div class="bg-violet-950/40 border border-violet-500/30 rounded-xl p-3 text-xs text-violet-200 mb-4 leading-relaxed">
-            <strong>Диагностический сигнал:</strong> Оценка ИИ (93.5) не суммируется с очной ведомостью автоматически. Решение о пересмотре принимает исключительно преподаватель.
-          </div>
-
-          <!-- Comparison Metrics -->
-          <div class="grid grid-cols-3 gap-2 text-center text-xs mb-4">
-            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
-              <div class="text-slate-400">Очная оценка</div>
-              <div class="text-lg font-bold font-mono text-slate-200 mt-0.5">70.0</div>
-            </div>
-            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
-              <div class="text-slate-400">ИИ-глубина (S_depth)</div>
-              <div class="text-lg font-bold font-mono text-violet-400 mt-0.5">93.5</div>
-            </div>
-            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
-              <div class="text-slate-400">Ректификация (Δ⁺)</div>
-              <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5">+23.5</div>
-            </div>
-          </div>
-
-          <!-- SOLO Probability Spectrum -->
-          <div class="mb-4">
-            <div class="flex justify-between text-xs mb-1.5">
-              <span class="text-slate-300 font-semibold">Распределение SOLO: Extended Abstract (Ур. 3)</span>
-              <span class="font-mono text-violet-400">E[D²] = 7.85</span>
-            </div>
-            <!-- Multi-color bar -->
-            <div class="w-full h-3 rounded-full overflow-hidden flex bg-slate-900">
-              <div style="width: 5%" class="bg-slate-500" title="Surface: 5%"></div>
-              <div style="width: 15%" class="bg-sky-500" title="Relational: 15%"></div>
-              <div style="width: 80%" class="bg-violet-500" title="Extended Abstract: 80%"></div>
-            </div>
-            <div class="flex justify-between text-[10px] text-slate-400 mt-1 font-mono">
-              <span>p1: 5%</span>
-              <span>p2: 15%</span>
-              <span class="text-violet-300 font-bold">p3: 80% (+1.0 Инициатива)</span>
-            </div>
-          </div>
-
-          <!-- Direct Quote Evidence -->
-          <div class="mb-4">
-            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Прямая цитата студента:</span>
-            <div class="mt-1.5 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs italic text-slate-200 leading-relaxed">
-              «Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?»
-            </div>
-          </div>
-
-          <!-- Mastered Concepts Badges -->
-          <div class="mb-4">
-            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Освоенные концепты (K_density = 1.0):</span>
-            <div class="flex flex-wrap gap-1 mt-1.5">
-              <span class="text-[11px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">co-adaptation</span>
-              <span class="text-[11px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">model capacity</span>
-              <span class="text-[11px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">dropout rate trade-off</span>
-              <span class="text-[11px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">underfitting</span>
-            </div>
-          </div>
-
-          <!-- Pedagogical Recommendation -->
-          <div class="mb-4 text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-            <strong class="text-white">Рекомендация:</strong> Студент самостоятельно исследовал границу емкости сети. Рекомендуется задать 1 контрольный устный блиц-вопрос на следующем занятии для подтверждения пересмотра очной оценки (потенциал: 90–95).
-          </div>
-
-          <!-- Human-in-the-Loop Actions -->
-          <div class="mt-auto space-y-2 pt-2 border-t border-slate-800">
-            <div class="grid grid-cols-2 gap-2">
-              <button onclick="handleTeacherAction('blitz', 'stud_aai_042')" class="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/30 transition">
-                🎯 Назначить блиц-опрос
-              </button>
-              <button onclick="handleTeacherAction('review', 'stud_aai_042')" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/30 transition">
-                ✍️ Пересмотреть балл (93)
-              </button>
-            </div>
-            <button onclick="handleTeacherAction('keep', 'stud_aai_042')" class="w-full px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition">
-              🔒 Оставить очную оценку 70.0
-            </button>
-          </div>
-
         </div>
 
       </div>
@@ -714,6 +622,7 @@
     // State
     let currentStudentId = localStorage.getItem('themis_active_student_id') || 'stud_aai_042';
     let currentSessionId = localStorage.getItem('themis_session_' + currentStudentId) || null;
+    let selectedReportStudentId = 'stud_aai_042';
     let currentTurnNumber = 0;
     let activeTopicId = 'week_09_deep_learning'; // Default: Week 9 / topic_05
     let syllabusWeeks = [];
@@ -1344,6 +1253,7 @@
         cachedStudents = data.students || [];
         renderTable(cachedStudents);
         renderGaussianChart(data);
+        await renderEvidenceCard(selectedReportStudentId);
 
       } catch (err) {
         console.error('Refresh dashboard error:', err);
@@ -1489,15 +1399,277 @@
     }
 
     // -----------------------------------------------------------------
-    // TEACHER ACTIONS & TOASTS
+    // DYNAMIC EVIDENCE CARD RENDERING & TEACHER ACTIONS
     // -----------------------------------------------------------------
+    async function renderEvidenceCard(studentId) {
+      selectedReportStudentId = studentId || 'stud_aai_042';
+      const panel = document.getElementById('evidence-card-panel');
+      const container = document.getElementById('evidence-card-content');
+      if (!container || !panel) return;
+
+      // Find student in cached cohort
+      const student = cachedStudents.find(s => s.student_id === selectedReportStudentId) || {
+        student_id: selectedReportStudentId,
+        display_name: 'Студент К. (Анонимный аудит)',
+        in_class_grade: 70.0,
+        ai_depth_score: null,
+        rectified_delta: 0.0,
+        z_score: 0.0,
+        zone: 'NO_SIGNAL',
+        session_status: 'OPTED_OUT',
+        has_report: false
+      };
+
+      // Case 1: Student is OPTED_OUT / INCOMPLETE / No AI report available
+      if (!student.has_report || student.session_status !== 'COMPLETED' || student.ai_depth_score === null) {
+        panel.className = 'lg:col-span-5 bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-2xl flex flex-col relative overflow-hidden transition-all duration-300';
+
+        container.innerHTML = `
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-lg">⚪</span>
+              <div>
+                <h3 class="text-sm font-bold text-slate-300">ДОКАЗАТЕЛЬНАЯ КАРТОЧКА АУДИТА</h3>
+                <p class="text-xs text-slate-400 font-mono">${escapeHtml(student.display_name)} (${student.student_id})</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-slate-900 text-slate-400 border border-slate-800">
+              0.00σ (Без сигнала)
+            </span>
+          </div>
+
+          <!-- Non-credit / Empty state notice -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 mb-4 leading-relaxed">
+            <strong class="text-white">Сессия не пройдена / Оценка сброшена:</strong> У студента нет завершенного сократического диалога в ИИ-канале (статус: <code>${student.session_status}</code>). Действует только очная оценка преподавателя (${student.in_class_grade.toFixed(1)}). Коррекция баллов отсутствует.
+          </div>
+
+          <!-- Comparison Metrics -->
+          <div class="grid grid-cols-3 gap-2 text-center text-xs mb-4">
+            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+              <div class="text-slate-400">Очная оценка</div>
+              <div class="text-lg font-bold font-mono text-slate-200 mt-0.5">${student.in_class_grade.toFixed(1)}</div>
+            </div>
+            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+              <div class="text-slate-400">ИИ-глубина (S_depth)</div>
+              <div class="text-lg font-bold font-mono text-slate-500 mt-0.5">—</div>
+            </div>
+            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+              <div class="text-slate-400">Ректификация (Δ⁺)</div>
+              <div class="text-lg font-bold font-mono text-slate-500 mt-0.5">0.0</div>
+            </div>
+          </div>
+
+          <!-- SOLO Probability Spectrum Placeholder -->
+          <div class="mb-4">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="text-slate-400 font-medium">Распределение SOLO: Данные отсутствуют</span>
+              <span class="font-mono text-slate-500">E[D²] = —</span>
+            </div>
+            <div class="w-full h-3 rounded-full overflow-hidden flex bg-slate-900">
+              <div style="width: 100%" class="bg-slate-800/80" title="Нет данных"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+              <span>p1: —</span>
+              <span>p2: —</span>
+              <span>p3: — (нет подтвержденных реплик)</span>
+            </div>
+          </div>
+
+          <!-- Direct Quote Evidence Placeholder -->
+          <div class="mb-4">
+            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Прямая цитата студента:</span>
+            <div class="mt-1.5 p-3 rounded-xl bg-slate-900/40 border border-slate-800 text-xs italic text-slate-500 leading-relaxed">
+              «Данные сократического диалога отсутствуют. Студент оценивается строго по результатам аудиторных занятий.»
+            </div>
+          </div>
+
+          <!-- Mastered Concepts Badges Placeholder -->
+          <div class="mb-4">
+            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Освоенные концепты (K_density = —):</span>
+            <div class="flex flex-wrap gap-1 mt-1.5">
+              <span class="text-[11px] px-2 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">нет подтвержденных концептов</span>
+            </div>
+          </div>
+
+          <!-- Pedagogical Recommendation -->
+          <div class="mb-4 text-xs text-slate-400 leading-relaxed bg-slate-900/40 p-3 rounded-xl border border-slate-800">
+            <strong class="text-slate-300">Рекомендация:</strong> Сохранять текущий балл ${student.in_class_grade.toFixed(1)}. Если студент претендует на повышение, он может добровольно пройти опрос во вкладке «Студент».
+          </div>
+
+          <!-- Actions -->
+          <div class="mt-auto space-y-2 pt-2 border-t border-slate-800">
+            <div class="grid grid-cols-2 gap-2">
+              <button disabled class="px-3 py-2 bg-slate-900 text-slate-600 border border-slate-800 rounded-xl text-xs font-semibold cursor-not-allowed">
+                🎯 Назначить блиц-опрос
+              </button>
+              <button disabled class="px-3 py-2 bg-slate-900 text-slate-600 border border-slate-800 rounded-xl text-xs font-semibold cursor-not-allowed">
+                ✍️ Пересмотреть балл
+              </button>
+            </div>
+            <button onclick="handleTeacherAction('keep', '${student.student_id}')" class="w-full px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition">
+              🔒 Оставить очную оценку ${student.in_class_grade.toFixed(1)}
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      // Case 2: Student has a COMPLETED session and an audit report
+      try {
+        const res = await fetch(`/api/v1/audit/report/${student.student_id}?topic_id=${activeTopicId}`);
+        if (!res.ok) {
+          throw new Error(`Report HTTP ${res.status}`);
+        }
+        const report = await res.json();
+
+        let themeBorder = 'border-violet-500/40';
+        let themeGlow = 'bg-violet-600/10';
+        let themeBadge = 'bg-violet-500/20 text-violet-300 border-violet-500/40';
+        let themeNotice = 'bg-violet-950/40 border-violet-500/30 text-violet-200';
+        let themeIcon = '🟣';
+        let p3Style = 'text-violet-300 font-bold';
+
+        if (report.zone === 'WATCHLIST') {
+          themeBorder = 'border-amber-500/40';
+          themeGlow = 'bg-amber-600/10';
+          themeBadge = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+          themeNotice = 'bg-amber-950/40 border-amber-500/30 text-amber-200';
+          themeIcon = '🟡';
+          p3Style = 'text-amber-300 font-bold';
+        } else if (report.zone === 'NORMAL') {
+          themeBorder = 'border-emerald-500/40';
+          themeGlow = 'bg-emerald-600/10';
+          themeBadge = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+          themeNotice = 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200';
+          themeIcon = '🟢';
+          p3Style = 'text-emerald-300 font-bold';
+        }
+
+        panel.className = `lg:col-span-5 bg-slate-950 border ${themeBorder} rounded-2xl p-5 shadow-2xl flex flex-col relative overflow-hidden transition-all duration-300`;
+
+        const p1Pct = Math.round((report.solo_analysis?.aggregated_probabilities?.p1 || 0) * 100);
+        const p2Pct = Math.round((report.solo_analysis?.aggregated_probabilities?.p2 || 0) * 100);
+        const p3Pct = Math.round((report.solo_analysis?.aggregated_probabilities?.p3 || 0) * 100);
+        const ed2 = (report.solo_analysis?.e_d_squared != null) ? report.solo_analysis.e_d_squared.toFixed(2) : '—';
+        const initBonus = (report.solo_analysis?.socratic_initiative_bonus > 0) ? ' (+1.0 Инициатива)' : '';
+
+        const quotes = (report.evidence?.student_quotes && report.evidence.student_quotes.length > 0)
+          ? report.evidence.student_quotes.map(q => `«${escapeHtml(q)}»`).join('<br><br>')
+          : '«Цитаты сократического диалога сохранены в аудиторском журнале.»';
+
+        const concepts = (report.evidence?.mastered_concepts && report.evidence.mastered_concepts.length > 0)
+          ? report.evidence.mastered_concepts.map(c => `
+              <span class="text-[11px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">${escapeHtml(c)}</span>
+            `).join('')
+          : '<span class="text-xs text-slate-500">Концепты подтверждены</span>';
+
+        const kDensity = (report.solo_analysis?.k_density != null) ? report.solo_analysis.k_density.toFixed(1) : '1.0';
+
+        container.innerHTML = `
+          <div class="absolute top-0 right-0 w-32 h-32 ${themeGlow} rounded-full blur-2xl pointer-events-none"></div>
+
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-lg">${themeIcon}</span>
+              <div>
+                <h3 class="text-sm font-bold text-white">ДОКАЗАТЕЛЬНАЯ КАРТОЧКА АУДИТА</h3>
+                <p class="text-xs text-violet-400 font-mono">${escapeHtml(student.display_name)} (${report.student_id})</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-full ${themeBadge}">
+              +${report.z_score.toFixed(2)}σ ${report.z_score >= 3.0 ? '(p < 0.001)' : ''}
+            </span>
+          </div>
+
+          <!-- Non-credit warning notice -->
+          <div class="${themeNotice} border rounded-xl p-3 text-xs mb-4 leading-relaxed">
+            <strong>Диагностический сигнал:</strong> Оценка ИИ (${report.ai_depth_score.toFixed(1)}) не суммируется с очной ведомостью автоматически. Решение о пересмотре принимает исключительно преподаватель.
+          </div>
+
+          <!-- Comparison Metrics -->
+          <div class="grid grid-cols-3 gap-2 text-center text-xs mb-4">
+            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+              <div class="text-slate-400">Очная оценка</div>
+              <div class="text-lg font-bold font-mono text-slate-200 mt-0.5">${report.in_class_grade.toFixed(1)}</div>
+            </div>
+            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+              <div class="text-slate-400">ИИ-глубина (S_depth)</div>
+              <div class="text-lg font-bold font-mono text-violet-400 mt-0.5">${report.ai_depth_score.toFixed(1)}</div>
+            </div>
+            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+              <div class="text-slate-400">Ректификация (Δ⁺)</div>
+              <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5">+${report.rectified_delta.toFixed(1)}</div>
+            </div>
+          </div>
+
+          <!-- SOLO Probability Spectrum -->
+          <div class="mb-4">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="text-slate-300 font-semibold">Распределение SOLO: ${escapeHtml(report.solo_analysis.dominant_level)}</span>
+              <span class="font-mono text-violet-400">E[D²] = ${ed2}</span>
+            </div>
+            <div class="w-full h-3 rounded-full overflow-hidden flex bg-slate-900">
+              <div style="width: ${p1Pct}%" class="bg-slate-500" title="Surface: ${p1Pct}%"></div>
+              <div style="width: ${p2Pct}%" class="bg-sky-500" title="Relational: ${p2Pct}%"></div>
+              <div style="width: ${p3Pct}%" class="bg-violet-500" title="Extended Abstract: ${p3Pct}%"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-400 mt-1 font-mono">
+              <span>p1: ${p1Pct}%</span>
+              <span>p2: ${p2Pct}%</span>
+              <span class="${p3Style}">p3: ${p3Pct}%${initBonus}</span>
+            </div>
+          </div>
+
+          <!-- Direct Quote Evidence -->
+          <div class="mb-4">
+            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Прямая цитата студента:</span>
+            <div class="mt-1.5 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs italic text-slate-200 leading-relaxed">
+              ${quotes}
+            </div>
+          </div>
+
+          <!-- Mastered Concepts Badges -->
+          <div class="mb-4">
+            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Освоенные концепты (K_density = ${kDensity}):</span>
+            <div class="flex flex-wrap gap-1 mt-1.5">
+              ${concepts}
+            </div>
+          </div>
+
+          <!-- Pedagogical Recommendation -->
+          <div class="mb-4 text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+            <strong class="text-white">Рекомендация:</strong> ${escapeHtml(report.recommended_action)}
+          </div>
+
+          <!-- Human-in-the-Loop Actions -->
+          <div class="mt-auto space-y-2 pt-2 border-t border-slate-800">
+            <div class="grid grid-cols-2 gap-2">
+              <button onclick="handleTeacherAction('blitz', '${report.student_id}')" class="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/30 transition">
+                🎯 Назначить блиц-опрос
+              </button>
+              <button onclick="handleTeacherAction('review', '${report.student_id}')" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/30 transition">
+                ✍️ Пересмотреть балл (${Math.round(report.ai_depth_score)})
+              </button>
+            </div>
+            <button onclick="handleTeacherAction('keep', '${report.student_id}')" class="w-full px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition">
+              🔒 Оставить очную оценку ${report.in_class_grade.toFixed(1)}
+            </button>
+          </div>
+        `;
+      } catch (err) {
+        console.error('Error fetching report for student:', err);
+      }
+    }
+
     function handleTeacherAction(action, studentId) {
+      const student = cachedStudents.find(s => s.student_id === studentId) || { display_name: studentId, in_class_grade: 70.0, ai_depth_score: 93.5 };
+      const targetGrade = student.ai_depth_score ? Math.round(student.ai_depth_score) : student.in_class_grade;
       if (action === 'blitz') {
-        showToast('Блиц-опрос назначен', 'Студенту К. отправлено персональное приглашение на 2-минутный устный блиц-вопрос перед началом следующей пары.', 'purple');
+        showToast('Блиц-опрос назначен', `Студенту ${student.display_name} отправлено персональное приглашение на 2-минутный устный блиц-вопрос перед началом следующей пары.`, 'purple');
       } else if (action === 'review') {
-        showToast('Оценка повышена', 'Очная оценка в ведомости пересмотрена с 70.0 до 93.0 балла на основании доказанной глубины.', 'emerald');
+        showToast('Оценка повышена', `Очная оценка для ${student.display_name} пересмотрена с ${student.in_class_grade.toFixed(1)} до ${targetGrade}.0 балла на основании доказанной глубины.`, 'emerald');
       } else {
-        showToast('Оценка подтверждена', 'Очная оценка 70.0 оставлена в силе без изменений.', 'slate');
+        showToast('Оценка подтверждена', `Очная оценка ${student.in_class_grade.toFixed(1)} оставлена в силе без изменений.`, 'slate');
       }
     }
 
@@ -1505,14 +1677,20 @@
       try {
         await fetch('/api/v1/demo/reset', { method: 'POST' });
         await refreshDashboard();
-        showToast('Демо сброшено', 'Когорта возвращена к исходным каноническим 28 студентам.', 'slate');
+        showToast('Демо сброшено', 'Когорта возвращена к исходным каноническим студентам.', 'slate');
       } catch (err) {
         console.error('Reset error:', err);
       }
     }
 
-    function viewReport(studentId) {
+    async function viewReport(studentId) {
+      selectedReportStudentId = studentId;
       switchView('professor');
+      await renderEvidenceCard(studentId);
+      const panel = document.getElementById('evidence-card-panel');
+      if (panel) {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
       showToast('Отчет открыт', `Отображены доказательства для ${studentId}`, 'purple');
     }
 
