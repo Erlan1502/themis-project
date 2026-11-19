@@ -3004,26 +3004,9 @@
       }
     }
 
-    const requestNewTelegramQr = fetchTelegramQrCode;
-      const sid = sId || (currentUser && currentUser.student_id) || currentStudentId;
-      try {
-        const res = await fetch(`/api/v1/auth/telegram-qr?student_id=${sid}`);
-        if (!res.ok) throw new Error('Ошибка генерации QR');
-        const data = await res.json();
-
-        const qrContainer = document.getElementById('student-qr-container');
-        if (qrContainer) qrContainer.classList.remove('hidden');
-
-        const qrImg = document.getElementById('binding-qr-img');
-        if (qrImg) qrImg.src = data.qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(data.deep_link)}`;
-
-        const btnLink = document.getElementById('binding-deep-link-btn');
-        if (btnLink) btnLink.href = data.deep_link;
-
-        startBindingTimer(data.expires_in || 900);
-        startBindingStatusPolling(sid);
-      } catch (err) {
-        console.error('QR generation error:', err);
+    function requestNewTelegramQr() {
+      if (currentUser && currentUser.student_id) {
+        fetchTelegramQrCode(currentUser.student_id);
       }
     }
 
