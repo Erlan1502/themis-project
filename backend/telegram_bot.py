@@ -35,11 +35,36 @@ class TelegramBotService:
         public_url: Optional[str] = None,
         bot_username: Optional[str] = None
     ):
-        self.bot_token = bot_token or settings.TELEGRAM_BOT_TOKEN
-        self.public_url = (public_url or settings.PUBLIC_URL).rstrip("/")
-        self.bot_username = bot_username or settings.TELEGRAM_BOT_USERNAME
+        self._bot_token = bot_token
+        self._public_url = public_url.rstrip("/") if public_url else None
+        self._bot_username = bot_username
         self._binding_callback: Optional[Callable] = None
         self._is_polling: bool = False
+
+    @property
+    def bot_token(self) -> str:
+        return self._bot_token or settings.TELEGRAM_BOT_TOKEN
+
+    @bot_token.setter
+    def bot_token(self, value: Optional[str]):
+        self._bot_token = value
+
+    @property
+    def public_url(self) -> str:
+        url = self._public_url or settings.PUBLIC_URL or "http://localhost:8000"
+        return url.rstrip("/")
+
+    @public_url.setter
+    def public_url(self, value: Optional[str]):
+        self._public_url = value.rstrip("/") if value else None
+
+    @property
+    def bot_username(self) -> str:
+        return self._bot_username or settings.TELEGRAM_BOT_USERNAME
+
+    @bot_username.setter
+    def bot_username(self, value: Optional[str]):
+        self._bot_username = value
 
     async def delete_webhook(self, drop_pending_updates: bool = False) -> Dict[str, Any]:
         """
@@ -156,24 +181,23 @@ class TelegramBotService:
         return base_url
 
     def build_inline_keyboard(self, start_param: Optional[str] = None) -> Dict[str, Any]:
-        """Создает инлайн-клавиатуру Telegram с кнопкой запуска Web App."""
+        """Создает инлайн-клавиатуру Telegram с кнопкой запуска Web App (строго HTTPS для Telegram)."""
         tma_url = self.build_tma_url(start_param)
-        return {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "🚀 Открыть Themis Mini App",
-                        "web_app": {"url": tma_url}
-                    }
-                ],
-                [
-                    {
-                        "text": "🛡 О принципах UDL и защите балла",
-                        "callback_data": "info_udl"
-                    }
-                ]
-            ]
-        }
+        rows = []
+        if tma_url.startswith("https://"):
+            rows.append([
+                {
+                    "text": "🚀 Открыть Themis Mini App",
+                    "web_app": {"url": tma_url}
+                }
+            ])
+        rows.append([
+            {
+                "text": "🛡 О принципах UDL и защите балла",
+                "callback_data": "info_udl"
+            }
+        ])
+        return {"inline_keyboard": rows}
 
     async def send_message(
         self,
@@ -285,16 +309,23 @@ class TelegramBotService:
                         f"Ваш аккаунт Telegram привязан к ведомости. Нажмите кнопку ниже, чтобы открыть сократическую сессию:"
                     )
                     tma_url = f"{self.public_url}/tma"
-                    keyboard = {
-                        "inline_keyboard": [
-                            [
-                                {
-                                    "text": "🚀 Открыть сократическую сессию",
-                                    "web_app": {"url": tma_url}
-                                }
+                    keyboard = None
+                    if tma_url.startswith("https://"):
+                        keyboard = {
+                            "inline_keyboard": [
+                                [
+                                    {
+                                        "text": "🚀 Открыть сократическую сессию",
+                                        "web_app": {"url": tma_url}
+                                    }
+                                ]
                             ]
-                        ]
-                    }
+                        }
+                    else:
+                        confirm_text += (
+                            f"\n\n📱 <i>Ссылка для локального веб-клиента:</i> {tma_url}\n"
+                            f"<i>(Для запуска Mini App прямо внутри мобильного Telegram подключите HTTPS через Cloudflare tunnel: cloudflared tunnel --url http://127.0.0.1:8000)</i>"
+                        )
                     await self.send_message(chat_id, confirm_text, reply_markup=keyboard)
 
                     # 5. Оповещаем веб-клиент через SSE AuditBroadcaster
@@ -345,11 +376,27 @@ class TelegramBotService:
             # Неизвестный текст — напоминаем о кнопке запуска
             else:
                 reminder_text = (
-                    f"Для запуска сократического диалога откройте Mini App по кнопке ниже:"
+                    "👋 Чтобы начать или продолжить сократический диалог, нажмите кнопку ниже:"
                 )
-                keyboard = self.build_inline_keyboard()
+                tma_url = self.build_tma_url()
+                keyboard = {
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "🚀 Открыть Themis Mini App",
+                                "web_app": {"url": tma_url}
+                            }
+                        ],
+                        [
+                            {
+                                "text": "🛡 О принципах UDL и защите балла",
+                                "callback_data": "info_udl"
+                            }
+                        ]
+                    ]
+                }
                 await self.send_message(chat_id, reminder_text, reply_markup=keyboard)
-                return {"ok": True, "action": "fallback_handled", "chat_id": chat_id}
+                return {"ok": True, "action": "fallback_handled", "chat_id": chat_id, "tma_url": tma_url}
 
         # 2. Обработка callback_query
         callback_query = update.get("callback_query")

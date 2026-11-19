@@ -486,11 +486,23 @@
       if (!container) return;
 
       const msgDiv = document.createElement('div');
+      if (meta.turn != null) {
+        msgDiv.setAttribute('data-turn', meta.turn);
+      }
 
       if (role === 'student') {
         msgDiv.className = "flex justify-end";
+        const badgeHtml = meta.badge ? `
+          <div class="mb-1 text-right">
+            <span class="inline-flex items-center gap-1 text-[10px] font-medium bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 px-1.5 py-0.5 rounded-full">
+              ${escapeHtml(meta.badge)}
+            </span>
+          </div>
+        ` : '';
+
         msgDiv.innerHTML = `
           <div class="chat-bubble-student text-white rounded-2xl rounded-tr-sm p-3 max-w-[85%] text-sm leading-relaxed shadow">
+            ${badgeHtml}
             <div>${escapeHtml(text)}</div>
             <div class="text-[10px] text-indigo-200/80 text-right mt-1 font-mono">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
           </div>
@@ -568,24 +580,26 @@
           currentStudentId = "stud_aai_042";
         }
 
-        // 2. Проверяем активную сессию
-        const activeResp = await fetch(`/api/v1/session/active/${currentStudentId}?topic_id=${activeTopicId}&course_id=${activeCourseId}`, { headers });
+        // 2. Проверяем активную сессию (поддерживает student_id или 'me' с заголовком TMA auth)
+        const targetSid = currentStudentId || "me";
+        const activeResp = await fetch(`/api/v1/session/active/${targetSid}?topic_id=${activeTopicId}&course_id=${activeCourseId}`, { headers });
         const activeData = await activeResp.json();
 
         if (activeData.found && activeData.session_id) {
           currentSessionId = activeData.session_id;
+          if (activeData.student_id) currentStudentId = activeData.student_id;
           document.getElementById('initial-prompt-text').textContent = activeData.initial_prompt || "Продолжение диалога.";
 
           // Восстанавливаем сохраненные реплики
           if (activeData.turns && activeData.turns.length) {
             activeData.turns.forEach(t => {
-              if (t.student) appendMessage('student', t.student);
-              if (t.system) appendMessage('tutor', t.system);
+              if (t.student) appendMessage('student', t.student, { turn: t.turn_number });
+              if (t.system) appendMessage('tutor', t.system, { turn: t.turn_number });
             });
             updateStepper(activeData.turns_count || activeData.turns.length);
           }
 
-          if (activeData.status === 'COMPLETED' || activeData.turns_count >= 3) {
+          if (activeData.status === 'COMPLETED' || activeData.status === 'AUDITING' || activeData.turns_count >= 3) {
             showCompletionModal();
           }
         } else {
@@ -615,6 +629,55 @@
 
       turnTypingStartTime = Date.now();
       startTimer(45 * 60);
+      initTmaAuditStream();
+    }
+
+    // Двусторонняя реактивная синхронизация в TMA через SSE
+    let tmaEventSource = null;
+    function initTmaAuditStream() {
+      if (tmaEventSource) {
+        try { tmaEventSource.close(); } catch(e) {}
+      }
+      try {
+        tmaEventSource = new EventSource('/api/v1/events/audit-stream');
+        tmaEventSource.onmessage = (event) => {
+          if (!event.data) return;
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'dialog_turn_sync') {
+              if (data.student_id === currentStudentId) {
+                const turnNum = data.turn_number;
+                const container = document.getElementById('chat-messages');
+                const alreadyDisplayed = (container && container.querySelector(`[data-turn="${turnNum}"]`)) ||
+                  (container && container.textContent.includes(data.student_message.trim()));
+                if (!alreadyDisplayed) {
+                  currentSessionId = data.session_id || currentSessionId;
+                  currentTurnNumber = turnNum;
+                  appendMessage('student', data.student_message, { badge: '💻 из Web', turn: turnNum });
+                  appendMessage('tutor', data.tutor_message, { turn: turnNum });
+                  updateStepper(turnNum);
+                  haptic('light');
+                  if (data.session_status === 'COMPLETED' || data.session_status === 'AUDITING' || turnNum >= 3) {
+                    setTimeout(showCompletionModal, 1200);
+                  }
+                }
+              }
+            } else if (data.type === 'audit_completed') {
+              if (data.student_id === currentStudentId) {
+                showCompletionModal();
+              }
+            }
+          } catch (e) {
+            console.debug('TMA SSE parse error:', e);
+          }
+        };
+        tmaEventSource.onerror = () => {
+          try { tmaEventSource.close(); } catch(e) {}
+          setTimeout(initTmaAuditStream, 5000);
+        };
+      } catch (err) {
+        console.warn('TMA SSE connection error:', err);
+      }
     }
 
     // Отправка реплики студента через потоковый SSE эндпоинт
@@ -636,8 +699,9 @@
       isSending = true;
       haptic('light');
 
+      const estTurn = (currentTurnNumber || 0) + 1;
       // Добавляем реплику студента в UI
-      appendMessage('student', text);
+      const studentBubble = appendMessage('student', text, { turn: estTurn });
       input.value = '';
       autoResizeTextarea(input);
 
@@ -672,7 +736,7 @@
         if (skeleton) skeleton.classList.add('hidden');
 
         // Создаем контейнер для потокового ответа тьютора
-        const tutorBubble = appendMessage('tutor', '');
+        const tutorBubble = appendMessage('tutor', '', { turn: estTurn });
         const textContainer = tutorBubble.querySelector('.tutor-text');
         let fullReply = '';
         let sourcesMeta = [];
@@ -709,6 +773,8 @@
                         haptic('warning');
                       } else {
                         haptic('success');
+                        if (studentBubble) studentBubble.setAttribute('data-turn', turnRes.turn_number);
+                        if (tutorBubble) tutorBubble.setAttribute('data-turn', turnRes.turn_number);
                         updateStepper(turnRes.turn_number);
                         if (turnRes.turn_number >= 3 || turnRes.session_status === 'COMPLETED' || turnRes.session_status === 'AUDITING') {
                           setTimeout(showCompletionModal, 1200);

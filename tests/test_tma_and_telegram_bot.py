@@ -439,3 +439,93 @@ def test_telegram_bot_long_polling_lifecycle(monkeypatch):
     assert test_bot._is_polling is False
 
 
+def test_telegram_bot_public_url_from_settings(monkeypatch):
+    """Тест: telegram_bot.public_url берет актуальный PUBLIC_URL из settings."""
+    assert telegram_bot.public_url == settings.PUBLIC_URL.rstrip("/")
+
+    # Проверяем динамическое обновление при изменении settings.PUBLIC_URL
+    monkeypatch.setattr(settings, "PUBLIC_URL", "https://new-tunnel-url.example.com/")
+    assert telegram_bot.public_url == "https://new-tunnel-url.example.com"
+
+
+def test_telegram_bot_arbitrary_text_fallback(client, monkeypatch):
+    """Тест: бот отвечает на любой произвольный текст доброжелательным приглашением с кнопкой web_app."""
+    sent_messages = []
+
+    async def fake_send_message(chat_id, text, reply_markup=None, parse_mode="HTML"):
+        sent_messages.append({"chat_id": chat_id, "text": text, "reply_markup": reply_markup})
+        return {"ok": True, "result": {"message_id": 123}}
+
+    monkeypatch.setattr(telegram_bot, "send_message", fake_send_message)
+
+    resp = client.post("/api/v1/tma/webhook", json={
+        "update_id": 9999,
+        "message": {
+            "message_id": 77,
+            "chat": {"id": 1234567},
+            "text": "Начнем?"
+        }
+    })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["result"]["action"] == "fallback_handled"
+    assert len(sent_messages) == 1
+    msg = sent_messages[0]
+    assert "👋 Чтобы начать или продолжить сократический диалог, нажмите кнопку ниже:" in msg["text"]
+    assert msg["reply_markup"] is not None
+    assert "inline_keyboard" in msg["reply_markup"]
+    kb_rows = msg["reply_markup"]["inline_keyboard"]
+    # Проверяем наличие кнопки с web_app
+    has_web_app = any("web_app" in btn for row in kb_rows for btn in row)
+    assert has_web_app is True
+    web_app_btn = next(btn for row in kb_rows for btn in row if "web_app" in btn)
+    assert "/tma" in web_app_btn["web_app"]["url"]
+
+
+def test_dialog_turn_sync_broadcast(client, monkeypatch):
+    """Тест: эндпоинты диалога транслируют событие dialog_turn_sync в audit_broadcaster."""
+    from backend.main import audit_broadcaster
+
+    broadcast_events = []
+    orig_broadcast = audit_broadcaster.broadcast
+
+    async def fake_broadcast(msg):
+        broadcast_events.append(msg)
+        await orig_broadcast(msg)
+
+    monkeypatch.setattr(audit_broadcaster, "broadcast", fake_broadcast)
+
+    # 1. Стартуем сессию
+    start_resp = client.post("/api/v1/session/start", json={
+        "student_id": "stud_sync_test",
+        "course_id": "prog_ai_2026",
+        "topic_id": "week_09_deep_learning",
+        "force_open": True,
+    })
+    assert start_resp.status_code == 200
+    session_id = start_resp.json()["session_id"]
+
+    # 2. Делаем шаг через POST /api/v1/dialog/turn/stream
+    turn_resp = client.post("/api/v1/dialog/turn/stream", json={
+        "session_id": session_id,
+        "student_message": "Регуляризация Dropout снижает ко-адаптацию весов.",
+        "typing_duration_ms": 12000,
+        "paste_detected": False,
+    })
+    assert turn_resp.status_code == 200
+    # Читаем текст ответа, чтобы вычитать стриминг до конца
+    _ = turn_resp.text
+
+    sync_events = [e for e in broadcast_events if e.get("type") == "dialog_turn_sync"]
+    assert len(sync_events) >= 1
+    sync_ev = sync_events[0]
+    assert sync_ev["session_id"] == session_id
+    assert sync_ev["student_id"] == "stud_sync_test"
+    assert sync_ev["turn_number"] == 1
+    assert "Dropout" in sync_ev["student_message"]
+    assert len(sync_ev["tutor_message"]) > 0
+    assert sync_ev["session_status"] == "INCOMPLETE_IGNORED"
+
+
+

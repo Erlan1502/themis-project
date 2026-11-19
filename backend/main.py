@@ -125,7 +125,7 @@ class AuditBroadcaster:
         dead_queues = []
         for q in list(self._subscribers):
             try:
-                await q.put(message)
+                q.put_nowait(message)
             except Exception:
                 dead_queues.append(q)
         for dq in dead_queues:
@@ -1011,6 +1011,18 @@ async def dialog_turn(req: DialogTurnRequest):
     # Сохраняем в SQLite для персистентности
     sync_records_to_sqlite()
 
+    # Двусторонняя реактивная синхронизация шагов диалога (TMA <-> Web)
+    await audit_broadcaster.broadcast({
+        "type": "dialog_turn_sync",
+        "session_id": req.session_id,
+        "student_id": record.student_id,
+        "turn_number": turn_number,
+        "student_message": req.student_message,
+        "tutor_message": system_reply,
+        "session_status": record.session_status,
+        "ai_depth_score": record.ai_depth_score,
+    })
+
     return DialogTurnResponse(
         session_id=req.session_id,
         turn_number=turn_number,
@@ -1219,6 +1231,18 @@ async def dialog_turn_stream(req: DialogTurnRequest, request: Request, backgroun
                 record.session_status = "INCOMPLETE_IGNORED"
                 confidence_str = f"LOW (Шаг {turn_number}/{settings.TARGET_TURNS})"
                 sync_records_to_sqlite()
+
+            # Двусторонняя реактивная синхронизация шагов диалога (TMA <-> Web)
+            await audit_broadcaster.broadcast({
+                "type": "dialog_turn_sync",
+                "session_id": req.session_id,
+                "student_id": record.student_id,
+                "turn_number": turn_number,
+                "student_message": req.student_message,
+                "tutor_message": system_reply,
+                "session_status": record.session_status,
+                "ai_depth_score": record.ai_depth_score,
+            })
 
             turn_response = {
                 "session_id": req.session_id,

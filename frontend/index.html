@@ -968,6 +968,59 @@
           if (!event.data) return;
           const data = JSON.parse(event.data);
 
+          if (data.type === 'dialog_turn_sync') {
+            console.log('[SSE] dialog_turn_sync event received:', data);
+            const targetSid = (currentUser && currentUser.student_id) || currentStudentId;
+            if (data.student_id === targetSid) {
+              const turnNum = data.turn_number;
+              const chatContainer = document.getElementById('chat-messages');
+
+              // Защита от задвоения: проверяем, отображен ли уже этот turn_number
+              const alreadyDisplayed = (chatContainer && chatContainer.querySelector(`[data-turn="${turnNum}"]`)) ||
+                (chatContainer && chatContainer.textContent.includes(data.student_message.trim()));
+
+              if (!alreadyDisplayed) {
+                currentSessionId = data.session_id || currentSessionId;
+                currentTurnNumber = turnNum;
+
+                // 1. Отрендерить реплику студента с аккуратным бейджем "📱 из Telegram"
+                appendChatMessage('user', data.student_message, false, null, '📱 из Telegram', turnNum);
+
+                // 2. Отрендерить ответ тьютора
+                appendChatMessage('assistant', data.tutor_message, false, null, null, turnNum);
+
+                // 3. Обновить степпер шагов
+                const badge = document.getElementById('badge-confidence');
+                const cardStatus = document.getElementById('stud-diag-status');
+
+                if (data.session_status === 'AUDITING' || data.session_status === 'COMPLETED' || turnNum >= 3) {
+                  if (badge) {
+                    badge.textContent = `Шаг 3/3 (AUDITING)`;
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+                  }
+                  if (cardStatus) {
+                    cardStatus.textContent = 'Аудит выполняется...';
+                    cardStatus.className = 'text-amber-400 font-semibold animate-pulse';
+                  }
+                  showToast('📱 Синхронизация из Telegram', `Получен ответ на Шаг ${turnNum} из 3. Аудит запущен.`, 'purple');
+                } else {
+                  if (badge) {
+                    badge.textContent = `Шаг ${turnNum}/3 (В процессе)`;
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-900/40 text-indigo-300 border border-indigo-500/30';
+                  }
+                  if (cardStatus) {
+                    cardStatus.textContent = `В процессе диалога (Шаг ${turnNum}/3)`;
+                    cardStatus.className = 'text-amber-400 font-semibold';
+                  }
+                  showToast('📱 Синхронизация из Telegram', `Шаг ${turnNum} из 3 выполнен через Telegram Mini App`, 'sky');
+                }
+
+                // Обновляем дашборд преподавателя
+                await refreshDashboard();
+              }
+            }
+          }
+
           if (data.type === 'telegram_linked') {
             console.log('[SSE] telegram_linked event received:', data);
             const targetSid = (currentUser && currentUser.student_id) || currentStudentId;
@@ -1313,8 +1366,8 @@
 
           // Append past dialog turns
           data.turns.forEach(t => {
-            appendChatMessage('user', t.student);
-            appendChatMessage('assistant', t.system, t.is_duplicate);
+            appendChatMessage('user', t.student, false, null, null, t.turn_number);
+            appendChatMessage('assistant', t.system, t.is_duplicate, null, null, t.turn_number);
           });
 
           // Compute matching ai depth score dynamically without hardcoding (Problem 1)
@@ -1496,8 +1549,9 @@
       if (!currentSessionId) return;
 
       const durationMs = Date.now() - typingStartTime;
+      const nextTurnEst = currentTurnNumber + 1;
 
-      appendChatMessage('user', text);
+      const userMsgDiv = appendChatMessage('user', text, false, null, null, nextTurnEst);
       input.value = '';
 
       const sendBtn = document.getElementById('btn-send-message');
@@ -1508,6 +1562,7 @@
       const container = document.getElementById('chat-messages');
       const assistantMsgDiv = document.createElement('div');
       assistantMsgDiv.className = 'flex items-start space-x-3';
+      assistantMsgDiv.setAttribute('data-turn', nextTurnEst);
       assistantMsgDiv.innerHTML = `
         <div class="ai-avatar-icon w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0 text-white">
           AI
@@ -1603,6 +1658,8 @@
               else if (event.type === 'done') {
                 const turnRes = event.turn_response;
                 currentTurnNumber = turnRes.turn_number;
+                if (userMsgDiv) userMsgDiv.setAttribute('data-turn', currentTurnNumber);
+                if (assistantMsgDiv) assistantMsgDiv.setAttribute('data-turn', currentTurnNumber);
                 pasteEventFired = false;
                 typingStartTime = Date.now();
                 localStorage.setItem('themis_session_' + currentStudentId, currentSessionId);
@@ -1652,9 +1709,12 @@
       }
     }
 
-    function appendChatMessage(role, text, isWarning = false, ragSources = null) {
+    function appendChatMessage(role, text, isWarning = false, ragSources = null, badgeText = null, turnNumber = null) {
       const container = document.getElementById('chat-messages');
       const msgDiv = document.createElement('div');
+      if (turnNumber != null) {
+        msgDiv.setAttribute('data-turn', turnNumber);
+      }
 
       if (role === 'user') {
         // Problem 13: Dynamically compute avatar letter from current student's display_name
@@ -1662,10 +1722,13 @@
         const cleanName = (student.display_name || '').replace(/^Студент\s*/i, '').trim();
         const initialLetter = cleanName ? cleanName.charAt(0).toUpperCase() : 'С';
 
+        const badgeHtml = badgeText ? `<span class="inline-flex items-center gap-1 text-[11px] font-medium bg-sky-500/20 text-sky-300 border border-sky-500/40 px-2 py-0.5 rounded-full">${escapeHtml(badgeText)}</span>` : '';
+
         msgDiv.className = 'flex items-start justify-end space-x-3';
         msgDiv.innerHTML = `
           <div class="bg-violet-600 rounded-2xl rounded-tr-sm p-3.5 max-w-xl text-sm leading-relaxed text-white shadow-lg">
-            ${escapeHtml(text)}
+            ${badgeHtml ? `<div class="flex items-center justify-end mb-1.5">${badgeHtml}</div>` : ''}
+            <div>${escapeHtml(text)}</div>
           </div>
           <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold shrink-0 text-slate-300 font-mono">
             ${escapeHtml(initialLetter)}
