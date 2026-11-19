@@ -118,20 +118,31 @@
           <span>Astana IT University</span>
         </span>
         <span class="text-slate-600">|</span>
-        <span class="text-slate-400">Курс: <strong class="text-slate-200">PAI — Программирование для ИИ (2026/2027)</strong></span>
-        <span class="text-slate-600">|</span>
-        <span class="text-slate-400">Преподаватель: <strong class="text-slate-200">Белощицкая С., д.т.н., проф.</strong></span>
+        <span class="text-slate-400">Преподаватель: <strong id="header-instructor" class="text-slate-200">Белощицкая С., д.т.н., проф.</strong></span>
       </div>
 
-      <!-- Week Selector -->
-      <div class="flex items-center space-x-2">
-        <label for="select-syllabus-week" class="font-semibold text-violet-400 flex items-center space-x-1">
-          <span>📅</span>
-          <span>Учебная неделя:</span>
-        </label>
-        <select id="select-syllabus-week" onchange="onWeekChanged(this.value)" class="bg-slate-900 border border-violet-500/40 text-violet-200 rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer">
-          <!-- Populated dynamically via loadSyllabusWeeks -->
-        </select>
+      <!-- Course & Week Selectors -->
+      <div class="flex items-center space-x-3 flex-wrap gap-2">
+        <div class="flex items-center space-x-1.5">
+          <label for="select-course" class="font-semibold text-indigo-400 flex items-center space-x-1">
+            <span>🎓</span>
+            <span>Курс:</span>
+          </label>
+          <select id="select-course" onchange="onCourseChanged(this.value)" class="bg-slate-900 border border-indigo-500/40 text-indigo-200 rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer">
+            <!-- Populated dynamically via loadCourses -->
+          </select>
+        </div>
+
+        <div class="flex items-center space-x-1.5">
+          <label for="select-syllabus-week" class="font-semibold text-violet-400 flex items-center space-x-1">
+            <span>📅</span>
+            <span>Учебная неделя:</span>
+          </label>
+          <select id="select-syllabus-week" onchange="onWeekChanged(this.value)" class="bg-slate-900 border border-violet-500/40 text-violet-200 rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer">
+            <!-- Populated dynamically via loadSyllabusWeeks -->
+          </select>
+        </div>
+
         <span class="text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded font-mono">
           MVP Режим: переключение недель
         </span>
@@ -424,13 +435,13 @@
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl">
           <div class="text-xs text-slate-400 font-medium">Студентов в группе</div>
           <div class="text-2xl font-bold font-mono text-white mt-1" id="kpi-total">20</div>
-          <div class="text-xs text-slate-500 mt-1">Очный журнал Группы 1</div>
+          <div class="text-xs text-slate-500 mt-1" id="kpi-total-sub">Очный журнал Группы 1</div>
         </div>
 
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl">
           <div class="text-xs text-slate-400 font-medium">Оценка без изменений (Opted-Out)</div>
           <div class="text-2xl font-bold font-mono text-slate-300 mt-1" id="kpi-opted-out">8</div>
-          <div class="text-xs text-slate-500 mt-1">6 не заходили + 2 случайных</div>
+          <div class="text-xs text-slate-500 mt-1" id="kpi-opted-out-sub">Без ИИ-сессии или не завершено</div>
         </div>
 
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl">
@@ -442,7 +453,7 @@
         <div class="bg-slate-950 border border-violet-500/40 bg-violet-950/20 rounded-2xl p-4 shadow-xl">
           <div class="text-xs text-violet-300 font-medium">Критическое расхождение (Purple)</div>
           <div class="text-2xl font-bold font-mono text-violet-300 mt-1" id="kpi-purple">1</div>
-          <div class="text-xs text-violet-400 mt-1">Студент К. (Z = +3.73σ)</div>
+          <div class="text-xs text-violet-400 mt-1" id="kpi-purple-sub">Аномалии (Z &ge; +3.0&sigma;)</div>
         </div>
 
       </div>
@@ -486,7 +497,7 @@
             </div>
             <div class="p-2 rounded-lg bg-violet-950/30 border border-violet-500/40">
               <div class="text-violet-300 font-semibold">HIGH DISCREPANCY</div>
-              <div class="text-slate-400 text-[11px]">≥ +3.0σ (≥ 19.40)</div>
+              <div class="text-slate-400 text-[11px]">≥ +3.0σ (≥ <span id="th-3s-purple">19.40</span>)</div>
               <div class="font-mono text-violet-300 mt-1 font-bold" id="cnt-purple">1 студ.</div>
             </div>
           </div>
@@ -501,20 +512,20 @@
 
       </div>
 
-      <!-- Cohort Table of all 20 Students -->
+      <!-- Cohort Table of all Students -->
       <div class="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-2xl">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Ведомость группы и диагностические расхождения (20 студентов)</h3>
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Ведомость группы и диагностические расхождения (<span id="table-total-count">20</span> студентов)</h3>
             <p class="text-xs text-slate-400 mt-0.5">Очные оценки неприкосновенны; отображаются сессионный статус и ректифицированные дельты</p>
           </div>
 
           <!-- Table Filters -->
           <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs flex-wrap gap-1">
-            <button onclick="filterTable('all')" class="tbl-filter px-3 py-1 rounded-lg bg-violet-600 text-white font-medium" data-filter="all">Все студенты (20)</button>
-            <button onclick="filterTable('alerts')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="alerts">Внимание (3)</button>
-            <button onclick="filterTable('normal')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="normal">Согласие (9)</button>
-            <button onclick="filterTable('opted')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="opted">Без бота (8)</button>
+            <button onclick="filterTable('all')" class="tbl-filter px-3 py-1 rounded-lg bg-violet-600 text-white font-medium" data-filter="all">Все студенты (<span id="filter-cnt-all">20</span>)</button>
+            <button onclick="filterTable('alerts')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="alerts">Внимание (<span id="filter-cnt-alerts">3</span>)</button>
+            <button onclick="filterTable('normal')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="normal">Согласие (<span id="filter-cnt-normal">9</span>)</button>
+            <button onclick="filterTable('opted')" class="tbl-filter px-3 py-1 rounded-lg text-slate-400 hover:text-white" data-filter="opted">Без бота (<span id="filter-cnt-opted">8</span>)</button>
           </div>
         </div>
 
@@ -619,18 +630,24 @@
   <!-- JAVASCRIPT APP LOGIC -->
   <!-- =================================================================== -->
   <script>
-    // State
+    // =================================================================
+    // APPLICATION STATE
+    // =================================================================
+    let currentCourseId = 'prog_ai_2026';
     let currentStudentId = localStorage.getItem('themis_active_student_id') || 'stud_aai_042';
     let currentSessionId = localStorage.getItem('themis_session_' + currentStudentId) || null;
     let selectedReportStudentId = 'stud_aai_042';
     let currentTurnNumber = 0;
     let activeTopicId = 'week_09_deep_learning'; // Default: Week 9 / topic_05
+    let coursesList = [];
     let syllabusWeeks = [];
     let studentsGroup1 = [];
     let chartInstance = null;
     let cachedStudents = [];
     let pasteEventFired = false;
     let typingStartTime = Date.now();
+    let countdownInterval = null;
+    let auditEventSource = null;
 
     // Socratic demo prompts for each week
     const weekDemoMessages = {
@@ -736,34 +753,140 @@
     // -----------------------------------------------------------------
     document.addEventListener('DOMContentLoaded', async () => {
       updateModeUI();
+      await loadCourses();
       await loadSyllabusWeeks();
       await initStudentSelector();
       await loadStudentSession(currentStudentId);
       await refreshDashboard();
-      startCountdownTimer(45 * 60);
+      initAuditStream();
     });
+
+    // -----------------------------------------------------------------
+    // REAL-TIME AUDIT STREAM (SSE)
+    // -----------------------------------------------------------------
+    function initAuditStream() {
+      if (auditEventSource) {
+        try { auditEventSource.close(); } catch(e) {}
+      }
+      auditEventSource = new EventSource('/api/v1/events/audit-stream');
+
+      auditEventSource.onopen = () => {
+        console.log('[SSE] audit-stream connected successfully');
+      };
+
+      auditEventSource.onmessage = async (event) => {
+        try {
+          if (!event.data) return;
+          const data = JSON.parse(event.data);
+          if (data.type === 'audit_completed') {
+            console.log('[SSE] audit_completed event received:', data);
+            const sName = data.record?.student_name || data.student_id;
+            const sScore = data.record?.ai_depth_score != null ? data.record.ai_depth_score.toFixed(1) : '—';
+            showToast('Аудит завершен (Live SSE)', `Студент ${sName} завершил аудит: S_depth = ${sScore}, Z = +${(data.record?.z_score || 0).toFixed(2)}σ`, 'purple');
+
+            // If this is currently active student in Student Ramp tab, update status live
+            if (data.student_id === currentStudentId) {
+              const cardStatus = document.getElementById('stud-diag-status');
+              if (cardStatus) {
+                cardStatus.textContent = `Сессия завершена (${sScore})`;
+                cardStatus.className = 'text-violet-400 font-semibold';
+              }
+              const badge = document.getElementById('badge-confidence');
+              if (badge) {
+                badge.textContent = 'Шаг 3/3 (Сессия завершена)';
+                badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+              }
+            }
+
+            // Real-time live update of professor dashboard without F5 reload
+            await refreshDashboard();
+          }
+        } catch (err) {
+          console.error('[SSE] Error handling audit stream message:', err);
+        }
+      };
+
+      auditEventSource.onerror = (err) => {
+        console.warn('[SSE] audit-stream disconnected, reconnecting in 5s...', err);
+        try { auditEventSource.close(); } catch(e) {}
+        setTimeout(initAuditStream, 5000);
+      };
+    }
+
+    // -----------------------------------------------------------------
+    // COURSE MANAGEMENT
+    // -----------------------------------------------------------------
+    async function loadCourses() {
+      try {
+        const res = await fetch('/api/v1/courses');
+        coursesList = await res.json();
+        const select = document.getElementById('select-course');
+        if (!select) return;
+        select.innerHTML = '';
+
+        coursesList.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.course_id;
+          opt.textContent = c.title;
+          if (c.course_id === currentCourseId) {
+            opt.selected = true;
+          }
+          select.appendChild(opt);
+        });
+
+        const activeCourse = coursesList.find(c => c.course_id === currentCourseId) || coursesList[0];
+        if (activeCourse) {
+          currentCourseId = activeCourse.course_id;
+          const instEl = document.getElementById('header-instructor');
+          if (instEl && activeCourse.instructor) {
+            instEl.textContent = activeCourse.instructor;
+          }
+        }
+      } catch (err) {
+        console.error('Error loading courses:', err);
+      }
+    }
+
+    async function onCourseChanged(newCourseId) {
+      currentCourseId = newCourseId;
+      const activeCourse = coursesList.find(c => c.course_id === newCourseId);
+      if (activeCourse) {
+        const instEl = document.getElementById('header-instructor');
+        if (instEl && activeCourse.instructor) {
+          instEl.textContent = activeCourse.instructor;
+        }
+      }
+      await loadSyllabusWeeks();
+      await initStudentSelector();
+      await loadStudentSession(currentStudentId);
+      await refreshDashboard();
+      showToast('Смена курса', `Выбран курс: ${activeCourse ? activeCourse.title : newCourseId}`, 'purple');
+    }
 
     // -----------------------------------------------------------------
     // SYLLABUS & WEEKS HANDLING
     // -----------------------------------------------------------------
     async function loadSyllabusWeeks() {
       try {
-        const res = await fetch('/api/v1/syllabus/weeks');
+        const res = await fetch(`/api/v1/syllabus/weeks?course_id=${currentCourseId}`);
         syllabusWeeks = await res.json();
         const select = document.getElementById('select-syllabus-week');
+        if (!select) return;
         select.innerHTML = '';
 
         syllabusWeeks.forEach(w => {
           const opt = document.createElement('option');
           opt.value = w.topic_id;
           opt.textContent = `${w.title}`;
-          // Default selection: Week 9 (Deep Learning & Dropout)
-          if (w.week_number === 9 || w.topic_id === 'week_09_deep_learning') {
+          if (w.week_number === 9 || w.topic_id === 'week_09_deep_learning' || w.topic_id === activeTopicId) {
             opt.selected = true;
           }
           select.appendChild(opt);
         });
 
+        if (select.value) {
+          activeTopicId = select.value;
+        }
         applyWeekMetadata(activeTopicId);
       } catch (err) {
         console.error('Error loading syllabus weeks:', err);
@@ -807,7 +930,7 @@
 
       chatContainer.innerHTML = `
         <div class="flex items-start space-x-3">
-          <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
+          <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0 text-white">
             AI
           </div>
           <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
@@ -822,7 +945,8 @@
       badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700';
 
       // Start new session
-      await startStudentSession();
+      await startStudentSession(true);
+      await loadStudentSession(currentStudentId);
       await refreshDashboard();
 
       showToast('Смена недели', `Выбрана ${week ? week.title : newTopicId}`, 'purple');
@@ -852,17 +976,25 @@
     }
 
     // -----------------------------------------------------------------
-    // TIMER LOGIC
+    // REAL-TIME SESSION TIMER
     // -----------------------------------------------------------------
     function startCountdownTimer(seconds) {
-      let remaining = seconds;
+      if (countdownInterval) clearInterval(countdownInterval);
+      let remaining = Math.max(0, Math.floor(seconds));
       const el = document.getElementById('timer-display');
-      setInterval(() => {
-        if (remaining <= 0) return;
-        remaining--;
+      function update() {
         const m = Math.floor(remaining / 60).toString().padStart(2, '0');
         const s = (remaining % 60).toString().padStart(2, '0');
-        el.textContent = `${m}:${s}`;
+        if (el) el.textContent = `${m}:${s}`;
+      }
+      update();
+      countdownInterval = setInterval(() => {
+        if (remaining <= 0) {
+          clearInterval(countdownInterval);
+          return;
+        }
+        remaining--;
+        update();
       }, 1000);
     }
 
@@ -871,7 +1003,7 @@
     // -----------------------------------------------------------------
     async function initStudentSelector() {
       try {
-        const res = await fetch('/api/v1/students?group_id=group_1');
+        const res = await fetch(`/api/v1/students?group_id=group_1&course_id=${currentCourseId}&topic_id=${activeTopicId}`);
         studentsGroup1 = await res.json();
         const sel = document.getElementById('student-selector');
         if (!sel) return;
@@ -882,6 +1014,7 @@
           opt.value = s.student_id;
           let icon = '🟢';
           if (s.zone === 'HIGH_DISCREPANCY') icon = '🟣';
+          else if (s.zone === 'AUDIT_TRIGGER') icon = '🔴';
           else if (s.zone === 'WATCHLIST') icon = '🟡';
           else if (s.session_status === 'INCOMPLETE_IGNORED') icon = '⚪';
           else if (s.session_status === 'OPTED_OUT') icon = '⚪';
@@ -929,15 +1062,15 @@
       if (cardName) cardName.textContent = student.display_name;
       if (cardId) cardId.textContent = student.student_id;
       if (cardAvatar) {
-        const cleanName = student.display_name.replace('Студент ', '');
-        cardAvatar.textContent = cleanName.charAt(0) + '.';
+        const cleanName = student.display_name.replace(/^Студент\s*/i, '').trim();
+        cardAvatar.textContent = (cleanName ? cleanName.charAt(0).toUpperCase() : 'С') + '.';
       }
       if (cardGrade) cardGrade.textContent = `${student.in_class_grade.toFixed(1)} / 100`;
       if (telemetryLabel) telemetryLabel.textContent = `${student.student_id} (${student.display_name})`;
 
-      // Fetch or restore active session from backend/SQLite
+      // Fetch active session from backend
       try {
-        const res = await fetch(`/api/v1/session/active/${studentId}?topic_id=${activeTopicId}`);
+        const res = await fetch(`/api/v1/session/active/${studentId}?topic_id=${activeTopicId}&course_id=${currentCourseId}`);
         const data = await res.json();
 
         const chatContainer = document.getElementById('chat-messages');
@@ -949,7 +1082,7 @@
         const initDiv = document.createElement('div');
         initDiv.className = 'flex items-start space-x-3';
         initDiv.innerHTML = `
-          <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">AI</div>
+          <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0 text-white">AI</div>
           <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
             ${escapeHtml(promptText)}
           </div>
@@ -961,19 +1094,43 @@
           currentTurnNumber = data.turns_count;
           localStorage.setItem('themis_session_' + studentId, currentSessionId);
 
+          // Synchronize session timer
+          const sessStartKey = 'themis_sess_start_' + currentSessionId;
+          const storedStart = localStorage.getItem(sessStartKey);
+          if (storedStart) {
+            const elapsed = Math.floor((Date.now() - parseInt(storedStart, 10)) / 1000);
+            const remaining = Math.max(0, (45 * 60) - elapsed);
+            startCountdownTimer(remaining);
+          } else {
+            localStorage.setItem(sessStartKey, Date.now().toString());
+            startCountdownTimer(45 * 60);
+          }
+
           // Append past dialog turns
           data.turns.forEach(t => {
             appendChatMessage('user', t.student);
             appendChatMessage('assistant', t.system, t.is_duplicate);
           });
 
+          // Compute matching ai depth score dynamically without hardcoding (Problem 1)
+          const cachedRec = cachedStudents.find(s => s.student_id === studentId);
+          const realDepthScore = (cachedRec && cachedRec.ai_depth_score != null)
+            ? cachedRec.ai_depth_score.toFixed(1)
+            : (student.ai_depth_score != null ? student.ai_depth_score.toFixed(1) : null);
+
           const badge = document.getElementById('badge-confidence');
-          if (currentTurnNumber >= 3) {
+          if (data.status === 'AUDITING') {
+            badge.textContent = `Шаг 3/3 (AUDITING)`;
+            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+            if (cardStatus) {
+              cardStatus.textContent = 'Аудит выполняется...';
+              cardStatus.className = 'text-amber-400 font-semibold animate-pulse';
+            }
+          } else if (currentTurnNumber >= 3 || data.status === 'COMPLETED') {
             badge.textContent = `Шаг 3/3 (Сессия завершена)`;
             badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
             if (cardStatus) {
-              const depthScore = (student.ai_depth_score != null) ? student.ai_depth_score.toFixed(1) : '—';
-              cardStatus.textContent = `Сессия завершена (${depthScore})`;
+              cardStatus.textContent = realDepthScore ? `Сессия завершена (${realDepthScore})` : 'Сессия завершена';
               cardStatus.className = 'text-violet-400 font-semibold';
             }
           } else if (currentTurnNumber > 0) {
@@ -994,6 +1151,7 @@
         } else {
           currentSessionId = null;
           currentTurnNumber = 0;
+          startCountdownTimer(45 * 60);
           const badge = document.getElementById('badge-confidence');
           badge.textContent = 'Шаг 0/3 (NO_SIGNAL)';
           badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700';
@@ -1018,6 +1176,7 @@
         const data = await res.json();
         if (res.ok) {
           localStorage.removeItem('themis_session_' + currentStudentId);
+          localStorage.removeItem('themis_sess_start_' + currentSessionId);
           currentSessionId = null;
           currentTurnNumber = 0;
           await loadStudentSession(currentStudentId);
@@ -1078,7 +1237,7 @@
     }
 
     // -----------------------------------------------------------------
-    // STUDENT VIEW: SESSION & CHAT
+    // STUDENT VIEW: SESSION & CHAT WITH SSE STREAMING (P0)
     // -----------------------------------------------------------------
     async function startStudentSession(forceOpen = false) {
       try {
@@ -1087,7 +1246,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             student_id: currentStudentId,
-            course_id: 'prog_ai_2026',
+            course_id: currentCourseId,
             topic_id: activeTopicId,
             force_open: forceOpen
           })
@@ -1097,6 +1256,8 @@
         currentTurnNumber = 0;
         typingStartTime = Date.now();
         localStorage.setItem('themis_session_' + currentStudentId, currentSessionId);
+        localStorage.setItem('themis_sess_start_' + currentSessionId, Date.now().toString());
+        startCountdownTimer(data.time_remaining_seconds || (45 * 60));
         return data;
       } catch (err) {
         console.error('Session start error:', err);
@@ -1138,8 +1299,33 @@
       sendBtn.disabled = true;
       sendBtn.innerHTML = '<span>Думает...</span>';
 
+      // Assistant message placeholder for SSE streaming
+      const container = document.getElementById('chat-messages');
+      const assistantMsgDiv = document.createElement('div');
+      assistantMsgDiv.className = 'flex items-start space-x-3';
+      assistantMsgDiv.innerHTML = `
+        <div class="ai-avatar-icon w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0 text-white">
+          AI
+        </div>
+        <div class="max-w-xl flex-1">
+          <div class="rag-sources-box hidden mb-2.5 p-2.5 rounded-xl bg-violet-950/60 border border-violet-500/40 text-xs"></div>
+          <div class="chat-bubble-text bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 text-sm leading-relaxed text-slate-200">
+            <span class="inline-block w-2 h-4 bg-violet-400 animate-pulse"></span>
+          </div>
+        </div>
+      `;
+      container.appendChild(assistantMsgDiv);
+      container.scrollTop = container.scrollHeight;
+
+      const avatarIcon = assistantMsgDiv.querySelector('.ai-avatar-icon');
+      const sourcesBox = assistantMsgDiv.querySelector('.rag-sources-box');
+      const bubbleText = assistantMsgDiv.querySelector('.chat-bubble-text');
+
+      let accumulatedText = '';
+      let receivedSources = [];
+
       try {
-        const res = await fetch('/api/v1/dialog/turn', {
+        const res = await fetch('/api/v1/dialog/turn/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1150,55 +1336,134 @@
           })
         });
 
-        const data = await res.json();
-        currentTurnNumber = data.turn_number;
-
-        pasteEventFired = false;
-        typingStartTime = Date.now();
-        localStorage.setItem('themis_session_' + currentStudentId, currentSessionId);
-
-        const badge = document.getElementById('badge-confidence');
-
-        if (data.is_duplicate) {
-          badge.textContent = `Повтор (Шаг ${currentTurnNumber}/3)`;
-          badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-amber-950/70 text-amber-300 border border-amber-500/40';
-          showToast('Повтор вопроса', 'Этот тезис уже звучал ранее. Сделайте шаг вглубь или ответьте на встречный вопрос.', 'red');
-          appendChatMessage('assistant', data.system_reply, true);
-        } else {
-          badge.textContent = `Шаг ${currentTurnNumber}/3 (${data.session_confidence})`;
-          if (currentTurnNumber >= 3) {
-            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
-            document.getElementById('stud-diag-status').textContent = 'Сессия завершена (93.5)';
-            document.getElementById('stud-diag-status').className = 'text-violet-400 font-semibold';
-            showToast('Аудит завершен', 'Диагностический отчет направлен в консоль преподавателя.', 'purple');
-          } else {
-            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-900/40 text-indigo-300 border border-indigo-500/30';
-          }
-          appendChatMessage('assistant', data.system_reply, false);
-          await refreshDashboard();
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
         }
 
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep remainder
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const jsonStr = trimmed.substring(5).trim();
+            if (!jsonStr) continue;
+
+            try {
+              const event = JSON.parse(jsonStr);
+
+              // 1. RAG sources event (Problem 14)
+              if (event.type === 'sources') {
+                receivedSources = event.sources || [];
+                if (receivedSources.length > 0) {
+                  sourcesBox.innerHTML = `
+                    <div class="font-bold flex items-center space-x-1.5 text-violet-300 mb-1.5">
+                      <span>📚</span>
+                      <span>Опора на лекцию (RAG / HNSW):</span>
+                    </div>
+                    <div class="space-y-1.5">
+                      ${receivedSources.map(s => `
+                        <div class="text-[11px] bg-slate-950/60 rounded-lg p-1.5 border border-slate-800">
+                          <div class="flex items-center justify-between text-slate-300 font-medium">
+                            <span>• Слайд ${s.slide_number}: <strong class="text-white">${escapeHtml(s.title || 'Лекция')}</strong></span>
+                            <span class="text-violet-400 font-mono text-[10px]">${(s.similarity * 100).toFixed(0)}% match</span>
+                          </div>
+                          ${s.content ? `<div class="text-slate-400 text-[10px] mt-0.5 line-clamp-2 pl-2">${escapeHtml(s.content)}</div>` : ''}
+                        </div>
+                      `).join('')}
+                    </div>
+                  `;
+                  sourcesBox.classList.remove('hidden');
+                }
+              }
+              // 2. Delta streaming chunks
+              else if (event.type === 'delta') {
+                if (accumulatedText === '') {
+                  bubbleText.textContent = '';
+                }
+                accumulatedText += event.text;
+                bubbleText.textContent = accumulatedText;
+                container.scrollTop = container.scrollHeight;
+              }
+              // 3. Final turn done event
+              else if (event.type === 'done') {
+                const turnRes = event.turn_response;
+                currentTurnNumber = turnRes.turn_number;
+                pasteEventFired = false;
+                typingStartTime = Date.now();
+                localStorage.setItem('themis_session_' + currentStudentId, currentSessionId);
+
+                const badge = document.getElementById('badge-confidence');
+                const cardStatus = document.getElementById('stud-diag-status');
+
+                if (turnRes.is_duplicate) {
+                  badge.textContent = `Повтор (Шаг ${currentTurnNumber}/3)`;
+                  badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-amber-950/70 text-amber-300 border border-amber-500/40';
+                  showToast('Повтор вопроса', 'Этот тезис уже звучал ранее. Сделайте шаг вглубь или ответьте на встречный вопрос.', 'red');
+                  avatarIcon.innerHTML = '⚠️';
+                  avatarIcon.className = 'w-7 h-7 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-xs font-bold shrink-0 text-amber-300';
+                  bubbleText.className = 'bg-amber-950/30 border border-amber-500/40 rounded-2xl rounded-tl-sm p-3.5 text-sm leading-relaxed text-amber-200';
+                } else {
+                  if (turnRes.session_status === 'AUDITING' || currentTurnNumber >= 3) {
+                    badge.textContent = `Шаг 3/3 (AUDITING)`;
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+                    if (cardStatus) {
+                      cardStatus.textContent = 'Аудит выполняется...';
+                      cardStatus.className = 'text-amber-400 font-semibold animate-pulse';
+                    }
+                    showToast('Аудит запущен', 'Психометрический расчет глубины (Слой 3A/3B) запущен в фоне. Ожидайте расчетного значения...', 'purple');
+                  } else {
+                    badge.textContent = `Шаг ${currentTurnNumber}/3 (${turnRes.session_confidence})`;
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-900/40 text-indigo-300 border border-indigo-500/30';
+                    if (cardStatus) {
+                      cardStatus.textContent = `В процессе диалога (Шаг ${currentTurnNumber}/3)`;
+                      cardStatus.className = 'text-amber-400 font-semibold';
+                    }
+                  }
+                  await refreshDashboard();
+                }
+              }
+            } catch (pErr) {
+              console.warn('[SSE] Chunk parse error:', pErr, jsonStr);
+            }
+          }
+        }
       } catch (err) {
-        console.error('Turn error:', err);
-        showToast('Ошибка сети', 'Не удалось связаться с бэкендом.', 'red');
+        console.error('Turn stream error:', err);
+        bubbleText.textContent = 'Ошибка получения ответа от сервера.';
+        showToast('Ошибка сети', 'Не удалось связаться с сервером по SSE-потоку.', 'red');
       } finally {
         sendBtn.disabled = false;
         sendBtn.innerHTML = '<span>Отправить</span>';
       }
     }
 
-    function appendChatMessage(role, text, isWarning = false) {
+    function appendChatMessage(role, text, isWarning = false, ragSources = null) {
       const container = document.getElementById('chat-messages');
       const msgDiv = document.createElement('div');
 
       if (role === 'user') {
+        // Problem 13: Dynamically compute avatar letter from current student's display_name
+        const student = studentsGroup1.find(s => s.student_id === currentStudentId) || { display_name: 'Студент' };
+        const cleanName = (student.display_name || '').replace(/^Студент\s*/i, '').trim();
+        const initialLetter = cleanName ? cleanName.charAt(0).toUpperCase() : 'С';
+
         msgDiv.className = 'flex items-start justify-end space-x-3';
         msgDiv.innerHTML = `
           <div class="bg-violet-600 rounded-2xl rounded-tr-sm p-3.5 max-w-xl text-sm leading-relaxed text-white shadow-lg">
             ${escapeHtml(text)}
           </div>
-          <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold shrink-0 text-slate-300">
-            К
+          <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold shrink-0 text-slate-300 font-mono">
+            ${escapeHtml(initialLetter)}
           </div>
         `;
       } else if (isWarning) {
@@ -1212,19 +1477,46 @@
           </div>
         `;
       } else {
+        let sourcesHtml = '';
+        if (ragSources && ragSources.length > 0) {
+          sourcesHtml = `
+            <div class="mb-2.5 p-2.5 rounded-xl bg-violet-950/60 border border-violet-500/40 text-xs">
+              <div class="font-bold flex items-center space-x-1.5 text-violet-300 mb-1.5">
+                <span>📚</span>
+                <span>Опора на лекцию (RAG / HNSW):</span>
+              </div>
+              <div class="space-y-1.5">
+                ${ragSources.map(s => `
+                  <div class="text-[11px] bg-slate-950/60 rounded-lg p-1.5 border border-slate-800">
+                    <div class="flex items-center justify-between text-slate-300 font-medium">
+                      <span>• Слайд ${s.slide_number}: <strong class="text-white">${escapeHtml(s.title || 'Лекция')}</strong></span>
+                      <span class="text-violet-400 font-mono text-[10px]">${(s.similarity * 100).toFixed(0)}% match</span>
+                    </div>
+                    ${s.content ? `<div class="text-slate-400 text-[10px] mt-0.5 line-clamp-2 pl-2">${escapeHtml(s.content)}</div>` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
         msgDiv.className = 'flex items-start space-x-3';
         msgDiv.innerHTML = `
-          <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
+          <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0 text-white">
             AI
           </div>
-          <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
-            ${escapeHtml(text)}
+          <div class="max-w-xl flex-1">
+            ${sourcesHtml}
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 text-sm leading-relaxed text-slate-200">
+              ${escapeHtml(text)}
+            </div>
           </div>
         `;
       }
 
       container.appendChild(msgDiv);
       container.scrollTop = container.scrollHeight;
+      return msgDiv;
     }
 
     // -----------------------------------------------------------------
@@ -1232,18 +1524,49 @@
     // -----------------------------------------------------------------
     async function refreshDashboard() {
       try {
-        const res = await fetch(`/api/v1/audit/dashboard?topic_id=${activeTopicId}`);
+        const res = await fetch(`/api/v1/audit/dashboard?topic_id=${activeTopicId}&course_id=${currentCourseId}`);
         const data = await res.json();
 
+        // 1. KPI Metrics
         document.getElementById('kpi-total').textContent = data.total_students;
         document.getElementById('kpi-opted-out').textContent = data.opted_out_or_incomplete;
         document.getElementById('kpi-completed').textContent = data.sessions_completed;
         document.getElementById('kpi-purple').textContent = data.alerts_count.purple;
 
+        // KPI Sublabels
+        const kpiOptedSub = document.getElementById('kpi-opted-out-sub');
+        if (kpiOptedSub) {
+          kpiOptedSub.textContent = `${data.opted_out_or_incomplete} без изменения оценки`;
+        }
+        const kpiPurpleSub = document.getElementById('kpi-purple-sub');
+        if (kpiPurpleSub) {
+          const topPurple = (data.students || []).find(s => s.zone === 'HIGH_DISCREPANCY');
+          if (topPurple) {
+            kpiPurpleSub.textContent = `${topPurple.display_name} (Z = +${topPurple.z_score.toFixed(2)}σ)`;
+          } else {
+            kpiPurpleSub.textContent = 'Критических аномалий нет';
+          }
+        }
+
+        // 2. Dynamic Table Filter Counters (Problem 11)
+        const cntAll = document.getElementById('filter-cnt-all');
+        if (cntAll) cntAll.textContent = data.total_students;
+        const cntAlerts = document.getElementById('filter-cnt-alerts');
+        if (cntAlerts) cntAlerts.textContent = (data.alerts_count.yellow || 0) + (data.alerts_count.red || 0) + (data.alerts_count.purple || 0);
+        const cntNormal = document.getElementById('filter-cnt-normal');
+        if (cntNormal) cntNormal.textContent = data.alerts_count.green || 0;
+        const cntOpted = document.getElementById('filter-cnt-opted');
+        if (cntOpted) cntOpted.textContent = data.opted_out_or_incomplete || 0;
+        const tblTotal = document.getElementById('table-total-count');
+        if (tblTotal) tblTotal.textContent = data.total_students;
+
+        // 3. Sigma Thresholds & Legend
         document.getElementById('dist-sigma').textContent = data.distribution.robust_sigma.toFixed(2);
         document.getElementById('th-1s').textContent = data.distribution.sigma_thresholds.plus_1_sigma.toFixed(2);
         document.getElementById('th-2s').textContent = data.distribution.sigma_thresholds.plus_2_sigma.toFixed(2);
         document.getElementById('th-3s').textContent = data.distribution.sigma_thresholds.plus_3_sigma.toFixed(2);
+        const th3Copy = document.getElementById('th-3s-purple');
+        if (th3Copy) th3Copy.textContent = data.distribution.sigma_thresholds.plus_3_sigma.toFixed(2);
 
         document.getElementById('cnt-green').textContent = `${data.alerts_count.green} студ.`;
         document.getElementById('cnt-yellow').textContent = `${data.alerts_count.yellow} студ.`;
@@ -1262,15 +1585,22 @@
 
     function renderTable(students) {
       const tbody = document.getElementById('cohort-table-body');
+      if (!tbody) return;
       tbody.innerHTML = '';
 
       students.forEach(s => {
         const tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-900/60 transition';
+        tr.className = 'hover:bg-slate-900/60 transition cursor-pointer';
+        tr.onclick = (e) => {
+          if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+          viewReport(s.student_id);
+        };
 
         let badgeHtml = '';
         if (s.zone === 'HIGH_DISCREPANCY') {
           badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-violet-950 text-violet-300 border border-violet-500/40">🟣 HIGH DISCREPANCY</span>';
+        } else if (s.zone === 'AUDIT_TRIGGER') {
+          badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-rose-950/60 text-rose-300 border border-rose-500/40">🔴 AUDIT TRIGGER</span>';
         } else if (s.zone === 'WATCHLIST') {
           badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-amber-950/60 text-amber-300 border border-amber-500/40">🟡 WATCHLIST</span>';
         } else if (s.zone === 'NORMAL') {
@@ -1291,12 +1621,12 @@
           ? `<span class="font-mono font-semibold text-slate-200">${s.ai_depth_score.toFixed(1)}</span>`
           : `<span class="text-slate-600 font-mono">—</span>`;
 
-        const groupTag = '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-violet-950/70 text-violet-300 border border-violet-500/30">Гр. 1</span>';
+        const groupTag = `<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-violet-950/70 text-violet-300 border border-violet-500/30">${escapeHtml(s.group_id || 'Гр. 1')}</span>`;
 
         tr.innerHTML = `
           <td class="py-3 px-4">
             <div class="font-semibold text-slate-200 flex items-center">${escapeHtml(s.display_name)} ${groupTag}</div>
-            <div class="text-[11px] font-mono text-slate-500">${s.student_id}</div>
+            <div class="text-[11px] font-mono text-slate-500">${escapeHtml(s.student_id)}</div>
           </td>
           <td class="py-3 px-3 text-center font-mono font-bold text-slate-300">${s.in_class_grade.toFixed(1)}</td>
           <td class="py-3 px-3 text-center">${depthDisplay}</td>
@@ -1305,7 +1635,7 @@
           <td class="py-3 px-3 text-center">${badgeHtml}</td>
           <td class="py-3 px-4 text-right space-x-1 whitespace-nowrap">
             ${s.has_report 
-              ? `<button onclick="viewReport('${s.student_id}')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-violet-300 font-medium transition">Отчет</button>`
+              ? `<button onclick="viewReport('${s.student_id}')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-violet-300 font-medium transition">Карточка</button>`
               : `<span class="text-slate-600 text-[11px] mr-1">Без отчета</span>`
             }
             <button onclick="resetStudentById('${s.student_id}')" class="px-2 py-1 rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 text-[11px] font-mono border border-rose-800/40 transition" title="Откатить студента до очной оценки (стереть ИИ-сессию)">↺ Сброс</button>
@@ -1337,69 +1667,202 @@
     }
 
     // -----------------------------------------------------------------
-    // CHART.JS DISTRIBUTION PLOT
+    // CHART.JS DISTRIBUTION PLOT WITH REAL SCATTER POINTS & SIGMA LINES (Problem 12)
     // -----------------------------------------------------------------
     function renderGaussianChart(data) {
-      const ctx = document.getElementById('sigmaChart').getContext('2d');
+      const canvas = document.getElementById('sigmaChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
       if (chartInstance) chartInstance.destroy();
 
-      const median = data.distribution.median_delta;
-      const sigma = data.distribution.robust_sigma;
+      const median = data.distribution.median_delta != null ? data.distribution.median_delta : 2.5;
+      const sigma = Math.max(0.1, data.distribution.robust_sigma != null ? data.distribution.robust_sigma : 5.63);
+      const th1 = data.distribution.sigma_thresholds.plus_1_sigma;
+      const th2 = data.distribution.sigma_thresholds.plus_2_sigma;
+      const th3 = data.distribution.sigma_thresholds.plus_3_sigma;
 
-      const labels = [];
-      const curveData = [];
-      for (let x = -4; x <= 26; x += 0.5) {
-        labels.push(x.toFixed(1));
+      const students = data.students || [];
+      const maxDelta = Math.max(0, ...students.map(s => s.rectified_delta || 0));
+      const maxX = Math.max(26, Math.ceil(maxDelta + 4));
+
+      function gaussianDensity(x) {
         const exponent = -0.5 * Math.pow((x - median) / sigma, 2);
-        const y = (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
-        curveData.push(y);
+        return (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
       }
 
+      // 1. Theoretical Gaussian curve
+      const curveData = [];
+      for (let x = -4; x <= maxX; x += 0.5) {
+        curveData.push({ x: parseFloat(x.toFixed(2)), y: gaussianDensity(x) });
+      }
+
+      // 2. Real cohort students scatter layer
+      const zoneColorMap = {
+        'HIGH_DISCREPANCY': { bg: '#c084fc', border: '#7c3aed', radius: 7 },
+        'AUDIT_TRIGGER':    { bg: '#f87171', border: '#dc2626', radius: 6 },
+        'WATCHLIST':        { bg: '#fbbf24', border: '#d97706', radius: 6 },
+        'NORMAL':           { bg: '#34d399', border: '#059669', radius: 5 },
+        'NO_SIGNAL':        { bg: '#94a3b8', border: '#475569', radius: 4 },
+      };
+
+      const studentScatterData = [];
+      const pointBgColors = [];
+      const pointBorderColors = [];
+      const pointRadii = [];
+
+      students.forEach(s => {
+        const xVal = s.rectified_delta != null ? s.rectified_delta : 0.0;
+        const yVal = gaussianDensity(xVal);
+        const styling = zoneColorMap[s.zone] || zoneColorMap['NO_SIGNAL'];
+
+        studentScatterData.push({
+          x: xVal,
+          y: yVal,
+          student: s
+        });
+        pointBgColors.push(styling.bg);
+        pointBorderColors.push(styling.border);
+        pointRadii.push(styling.radius);
+      });
+
+      // Sigma lines plugin
+      const sigmaLinesPlugin = {
+        id: 'sigmaLinesPlugin',
+        afterDraw(chart) {
+          const { ctx, chartArea, scales: { x } } = chart;
+          if (!chartArea) return;
+          const { top, bottom, left, right } = chartArea;
+
+          const lines = [
+            { val: th1, label: `+1σ (${th1.toFixed(1)})`, color: 'rgba(52, 211, 153, 0.75)' },
+            { val: th2, label: `+2σ (${th2.toFixed(1)})`, color: 'rgba(251, 191, 36, 0.75)' },
+            { val: th3, label: `+3σ (${th3.toFixed(1)})`, color: 'rgba(192, 132, 252, 0.85)' },
+          ];
+
+          ctx.save();
+          lines.forEach(l => {
+            const xPos = x.getPixelForValue(l.val);
+            if (xPos >= left && xPos <= right) {
+              ctx.strokeStyle = l.color;
+              ctx.lineWidth = 1.5;
+              ctx.setLineDash([4, 4]);
+              ctx.beginPath();
+              ctx.moveTo(xPos, top);
+              ctx.lineTo(xPos, bottom);
+              ctx.stroke();
+
+              ctx.fillStyle = l.color;
+              ctx.font = '10px "JetBrains Mono", monospace';
+              ctx.textAlign = 'center';
+              ctx.fillText(l.label, xPos, top + 12);
+            }
+          });
+          ctx.restore();
+        }
+      };
+
       chartInstance = new Chart(ctx, {
-        type: 'line',
+        type: 'scatter',
         data: {
-          labels: labels,
           datasets: [
             {
+              type: 'line',
               label: 'Плотность вероятности канала (Gaussian/MAD)',
               data: curveData,
               borderColor: '#8b5cf6',
-              borderWidth: 2.5,
+              borderWidth: 2,
               fill: true,
               backgroundColor: 'rgba(139, 92, 246, 0.08)',
-              tension: 0.4,
-              pointRadius: 0
+              tension: 0.35,
+              pointRadius: 0,
+              showLine: true,
+              order: 2,
+            },
+            {
+              type: 'scatter',
+              label: 'Студенты когорты',
+              data: studentScatterData,
+              backgroundColor: pointBgColors,
+              borderColor: pointBorderColors,
+              borderWidth: 1.5,
+              pointRadius: pointRadii,
+              pointHoverRadius: 9,
+              order: 1,
             }
           ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          onClick: (evt, elements) => {
+            if (elements && elements.length > 0) {
+              const el = elements[0];
+              const ds = chartInstance.data.datasets[el.datasetIndex];
+              if (ds && ds.data && ds.data[el.index] && ds.data[el.index].student) {
+                const s = ds.data[el.index].student;
+                selectStudentForAudit(s.student_id);
+              }
+            }
+          },
           plugins: {
             legend: { display: false },
             tooltip: {
               callbacks: {
-                title: (items) => `Дельта Δ⁺ = ${items[0].label}`,
-                label: () => ''
+                title: (items) => {
+                  if (items.length > 0) {
+                    const raw = items[0].raw;
+                    if (raw && raw.student) {
+                      return `${raw.student.display_name} (${raw.student.student_id})`;
+                    }
+                    return `Δ⁺ = ${items[0].parsed.x.toFixed(1)}`;
+                  }
+                  return '';
+                },
+                label: (item) => {
+                  const raw = item.raw;
+                  if (raw && raw.student) {
+                    const s = raw.student;
+                    return [
+                      `Очная оценка: ${s.in_class_grade.toFixed(1)}`,
+                      `ИИ-глубина: ${s.ai_depth_score != null ? s.ai_depth_score.toFixed(1) : '—'}`,
+                      `Ректификация Δ⁺: +${s.rectified_delta.toFixed(1)} (Z = +${s.z_score.toFixed(2)}σ)`,
+                      `Зона: ${s.zone}`,
+                      `👉 Кликните для открытия карточки аудита`
+                    ];
+                  }
+                  return `Плотность: ${item.parsed.y.toFixed(4)}`;
+                }
               }
             }
           },
           scales: {
             x: {
+              type: 'linear',
+              min: -4,
+              max: maxX,
               grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
+              ticks: {
+                color: '#94a3b8',
+                font: { family: 'JetBrains Mono', size: 10 },
+                stepSize: 4
+              }
             },
             y: {
               display: false,
               grid: { display: false }
             }
           }
-        }
+        },
+        plugins: [sigmaLinesPlugin]
       });
     }
 
+    function selectStudentForAudit(studentId) {
+      viewReport(studentId);
+    }
+
     // -----------------------------------------------------------------
-    // DYNAMIC EVIDENCE CARD RENDERING & TEACHER ACTIONS
+    // DYNAMIC EVIDENCE CARD RENDERING & HUMAN-IN-THE-LOOP ACTIONS (Problem 2)
     // -----------------------------------------------------------------
     async function renderEvidenceCard(studentId) {
       selectedReportStudentId = studentId || 'stud_aai_042';
@@ -1407,10 +1870,9 @@
       const container = document.getElementById('evidence-card-content');
       if (!container || !panel) return;
 
-      // Find student in cached cohort
       const student = cachedStudents.find(s => s.student_id === selectedReportStudentId) || {
         student_id: selectedReportStudentId,
-        display_name: 'Студент К. (Анонимный аудит)',
+        display_name: 'Студент',
         in_class_grade: 70.0,
         ai_depth_score: null,
         rectified_delta: 0.0,
@@ -1420,7 +1882,7 @@
         has_report: false
       };
 
-      // Case 1: Student is OPTED_OUT / INCOMPLETE / No AI report available
+      // Case 1: Student is OPTED_OUT / INCOMPLETE / No AI report
       if (!student.has_report || student.session_status !== 'COMPLETED' || student.ai_depth_score === null) {
         panel.className = 'lg:col-span-5 bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-2xl flex flex-col relative overflow-hidden transition-all duration-300';
 
@@ -1438,12 +1900,10 @@
             </span>
           </div>
 
-          <!-- Non-credit / Empty state notice -->
           <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 mb-4 leading-relaxed">
-            <strong class="text-white">Сессия не пройдена / Оценка сброшена:</strong> У студента нет завершенного сократического диалога в ИИ-канале (статус: <code>${student.session_status}</code>). Действует только очная оценка преподавателя (${student.in_class_grade.toFixed(1)}). Коррекция баллов отсутствует.
+            <strong class="text-white">Сессия не завершена / Оценка в журнале:</strong> У студента нет завершенного сократического диалога в ИИ-канале (статус: <code>${student.session_status}</code>). Действует только очная оценка преподавателя (${student.in_class_grade.toFixed(1)}).
           </div>
 
-          <!-- Comparison Metrics -->
           <div class="grid grid-cols-3 gap-2 text-center text-xs mb-4">
             <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
               <div class="text-slate-400">Очная оценка</div>
@@ -1459,7 +1919,6 @@
             </div>
           </div>
 
-          <!-- SOLO Probability Spectrum Placeholder -->
           <div class="mb-4">
             <div class="flex justify-between text-xs mb-1.5">
               <span class="text-slate-400 font-medium">Распределение SOLO: Данные отсутствуют</span>
@@ -1475,7 +1934,6 @@
             </div>
           </div>
 
-          <!-- Direct Quote Evidence Placeholder -->
           <div class="mb-4">
             <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Прямая цитата студента:</span>
             <div class="mt-1.5 p-3 rounded-xl bg-slate-900/40 border border-slate-800 text-xs italic text-slate-500 leading-relaxed">
@@ -1483,7 +1941,6 @@
             </div>
           </div>
 
-          <!-- Mastered Concepts Badges Placeholder -->
           <div class="mb-4">
             <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Освоенные концепты (K_density = —):</span>
             <div class="flex flex-wrap gap-1 mt-1.5">
@@ -1491,22 +1948,12 @@
             </div>
           </div>
 
-          <!-- Pedagogical Recommendation -->
           <div class="mb-4 text-xs text-slate-400 leading-relaxed bg-slate-900/40 p-3 rounded-xl border border-slate-800">
-            <strong class="text-slate-300">Рекомендация:</strong> Сохранять текущий балл ${student.in_class_grade.toFixed(1)}. Если студент претендует на повышение, он может добровольно пройти опрос во вкладке «Студент».
+            <strong class="text-slate-300">Рекомендация:</strong> Сохранять текущий балл ${student.in_class_grade.toFixed(1)}. Студент может добровольно пройти опрос во вкладке «Студент».
           </div>
 
-          <!-- Actions -->
           <div class="mt-auto space-y-2 pt-2 border-t border-slate-800">
-            <div class="grid grid-cols-2 gap-2">
-              <button disabled class="px-3 py-2 bg-slate-900 text-slate-600 border border-slate-800 rounded-xl text-xs font-semibold cursor-not-allowed">
-                🎯 Назначить блиц-опрос
-              </button>
-              <button disabled class="px-3 py-2 bg-slate-900 text-slate-600 border border-slate-800 rounded-xl text-xs font-semibold cursor-not-allowed">
-                ✍️ Пересмотреть балл
-              </button>
-            </div>
-            <button onclick="handleTeacherAction('keep', '${student.student_id}')" class="w-full px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition">
+            <button onclick="handleTeacherAction('KEEP_CURRENT', '${student.student_id}')" class="w-full px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition">
               🔒 Оставить очную оценку ${student.in_class_grade.toFixed(1)}
             </button>
           </div>
@@ -1516,7 +1963,7 @@
 
       // Case 2: Student has a COMPLETED session and an audit report
       try {
-        const res = await fetch(`/api/v1/audit/report/${student.student_id}?topic_id=${activeTopicId}`);
+        const res = await fetch(`/api/v1/audit/report/${student.student_id}?topic_id=${activeTopicId}&course_id=${currentCourseId}`);
         if (!res.ok) {
           throw new Error(`Report HTTP ${res.status}`);
         }
@@ -1529,7 +1976,14 @@
         let themeIcon = '🟣';
         let p3Style = 'text-violet-300 font-bold';
 
-        if (report.zone === 'WATCHLIST') {
+        if (report.zone === 'AUDIT_TRIGGER') {
+          themeBorder = 'border-rose-500/40';
+          themeGlow = 'bg-rose-600/10';
+          themeBadge = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+          themeNotice = 'bg-rose-950/40 border-rose-500/30 text-rose-200';
+          themeIcon = '🔴';
+          p3Style = 'text-rose-300 font-bold';
+        } else if (report.zone === 'WATCHLIST') {
           themeBorder = 'border-amber-500/40';
           themeGlow = 'bg-amber-600/10';
           themeBadge = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
@@ -1565,6 +2019,49 @@
 
         const kDensity = (report.solo_analysis?.k_density != null) ? report.solo_analysis.k_density.toFixed(1) : '1.0';
 
+        // Problem 2: When delta <= 0 (NORMAL), hide grade increase button and explain Zero Downward Penalty
+        const isNormalOrNoBonus = (report.rectified_delta <= 0 || report.zone === 'NORMAL');
+
+        let actionButtonsHtml = '';
+        if (isNormalOrNoBonus) {
+          actionButtonsHtml = `
+            <div class="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-300 flex items-start space-x-2 mb-2">
+              <span class="text-base">🛡️</span>
+              <div>
+                <strong>Согласие каналов (Zero Downward Penalty):</strong>
+                <p class="mt-0.5 text-slate-300">Очная оценка (${report.in_class_grade.toFixed(1)}) выше или равна оценке ИИ (${report.ai_depth_score.toFixed(1)}). Занижение оценки строго запрещено правилами Themis Project.</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <button onclick="handleTeacherAction('ORAL_BLITZ', '${report.student_id}')" class="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/30 transition">
+                🎯 Контрольный блиц
+              </button>
+              <button onclick="handleTeacherAction('KEEP_CURRENT', '${report.student_id}')" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition">
+                🔒 Подтвердить оценку
+              </button>
+            </div>
+          `;
+        } else {
+          actionButtonsHtml = `
+            <div class="grid grid-cols-2 gap-2">
+              <button onclick="handleTeacherAction('ORAL_BLITZ', '${report.student_id}')" class="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/30 transition">
+                🎯 Назначить блиц-опрос
+              </button>
+              <button onclick="handleTeacherAction('ACCEPT_RECTIFICATION', '${report.student_id}', ${report.ai_depth_score})" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/30 transition">
+                ✍️ Принять балл (${Math.round(report.ai_depth_score)})
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <button onclick="handleTeacherAction('REJECT', '${report.student_id}')" class="px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 rounded-xl text-xs font-medium border border-rose-800/40 transition">
+                ❌ Отклонить ИИ
+              </button>
+              <button onclick="handleTeacherAction('KEEP_CURRENT', '${report.student_id}')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition">
+                🔒 Оставить ${report.in_class_grade.toFixed(1)}
+              </button>
+            </div>
+          `;
+        }
+
         container.innerHTML = `
           <div class="absolute top-0 right-0 w-32 h-32 ${themeGlow} rounded-full blur-2xl pointer-events-none"></div>
 
@@ -1581,12 +2078,10 @@
             </span>
           </div>
 
-          <!-- Non-credit warning notice -->
           <div class="${themeNotice} border rounded-xl p-3 text-xs mb-4 leading-relaxed">
             <strong>Диагностический сигнал:</strong> Оценка ИИ (${report.ai_depth_score.toFixed(1)}) не суммируется с очной ведомостью автоматически. Решение о пересмотре принимает исключительно преподаватель.
           </div>
 
-          <!-- Comparison Metrics -->
           <div class="grid grid-cols-3 gap-2 text-center text-xs mb-4">
             <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
               <div class="text-slate-400">Очная оценка</div>
@@ -1602,7 +2097,6 @@
             </div>
           </div>
 
-          <!-- SOLO Probability Spectrum -->
           <div class="mb-4">
             <div class="flex justify-between text-xs mb-1.5">
               <span class="text-slate-300 font-semibold">Распределение SOLO: ${escapeHtml(report.solo_analysis.dominant_level)}</span>
@@ -1620,7 +2114,6 @@
             </div>
           </div>
 
-          <!-- Direct Quote Evidence -->
           <div class="mb-4">
             <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Прямая цитата студента:</span>
             <div class="mt-1.5 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs italic text-slate-200 leading-relaxed">
@@ -1628,7 +2121,6 @@
             </div>
           </div>
 
-          <!-- Mastered Concepts Badges -->
           <div class="mb-4">
             <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Освоенные концепты (K_density = ${kDensity}):</span>
             <div class="flex flex-wrap gap-1 mt-1.5">
@@ -1636,24 +2128,12 @@
             </div>
           </div>
 
-          <!-- Pedagogical Recommendation -->
           <div class="mb-4 text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800">
             <strong class="text-white">Рекомендация:</strong> ${escapeHtml(report.recommended_action)}
           </div>
 
-          <!-- Human-in-the-Loop Actions -->
           <div class="mt-auto space-y-2 pt-2 border-t border-slate-800">
-            <div class="grid grid-cols-2 gap-2">
-              <button onclick="handleTeacherAction('blitz', '${report.student_id}')" class="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/30 transition">
-                🎯 Назначить блиц-опрос
-              </button>
-              <button onclick="handleTeacherAction('review', '${report.student_id}')" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/30 transition">
-                ✍️ Пересмотреть балл (${Math.round(report.ai_depth_score)})
-              </button>
-            </div>
-            <button onclick="handleTeacherAction('keep', '${report.student_id}')" class="w-full px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition">
-              🔒 Оставить очную оценку ${report.in_class_grade.toFixed(1)}
-            </button>
+            ${actionButtonsHtml}
           </div>
         `;
       } catch (err) {
@@ -1661,21 +2141,73 @@
       }
     }
 
-    function handleTeacherAction(action, studentId) {
-      const student = cachedStudents.find(s => s.student_id === studentId) || { display_name: studentId, in_class_grade: 70.0, ai_depth_score: 93.5 };
-      const targetGrade = student.ai_depth_score ? Math.round(student.ai_depth_score) : student.in_class_grade;
-      if (action === 'blitz') {
-        showToast('Блиц-опрос назначен', `Студенту ${student.display_name} отправлено персональное приглашение на 2-минутный устный блиц-вопрос перед началом следующей пары.`, 'purple');
-      } else if (action === 'review') {
-        showToast('Оценка повышена', `Очная оценка для ${student.display_name} пересмотрена с ${student.in_class_grade.toFixed(1)} до ${targetGrade}.0 балла на основании доказанной глубины.`, 'emerald');
-      } else {
-        showToast('Оценка подтверждена', `Очная оценка ${student.in_class_grade.toFixed(1)} оставлена в силе без изменений.`, 'slate');
+    // Problem 2: Teacher decision connected to real POST /api/v1/audit/decision
+    async function handleTeacherAction(action, studentId, suggestedGrade = null) {
+      const student = cachedStudents.find(s => s.student_id === studentId) || { display_name: studentId, in_class_grade: 70.0, ai_depth_score: null };
+      let newGrade = null;
+      let comment = null;
+
+      if (action === 'ACCEPT_RECTIFICATION') {
+        const defGrade = suggestedGrade != null ? Math.round(suggestedGrade) : Math.round(student.ai_depth_score || student.in_class_grade);
+        const promptVal = prompt(
+          `Укажите итоговый балл для студента ${student.display_name} (текущий: ${student.in_class_grade.toFixed(1)}, рекомендация ИИ: ${defGrade}):`,
+          defGrade
+        );
+        if (promptVal === null) return;
+        newGrade = parseFloat(promptVal);
+        if (isNaN(newGrade) || newGrade < student.in_class_grade) {
+          showToast('Ошибка валидации', `Новый балл (${newGrade}) не может быть ниже очной оценки (${student.in_class_grade.toFixed(1)})! Zero Downward Penalty.`, 'red');
+          return;
+        }
+      } else if (action === 'ORAL_BLITZ') {
+        comment = prompt(`Комментарий к устному блиц-опросу для ${student.display_name} (необязательно):`, '2-минутный устный вопрос перед началом пары');
+        if (comment === null) return;
+      } else if (action === 'REJECT') {
+        if (!confirm(`Отклонить рекомендацию ИИ и зафиксировать очную оценку ${student.in_class_grade.toFixed(1)} для ${student.display_name}?`)) {
+          return;
+        }
+      }
+
+      try {
+        const res = await fetch('/api/v1/audit/decision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            student_id: studentId,
+            course_id: currentCourseId,
+            topic_id: activeTopicId,
+            action: action,
+            new_grade: newGrade,
+            comment: comment || undefined
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Ошибка сохранения решения преподавателя');
+        }
+
+        showToast('Решение зафиксировано', data.message || 'Действие успешно применено.', 'emerald');
+
+        if (currentStudentId === studentId) {
+          await loadStudentSession(currentStudentId);
+        }
+
+        await refreshDashboard();
+        await renderEvidenceCard(studentId);
+      } catch (err) {
+        console.error('Teacher action error:', err);
+        showToast('Ошибка действия', err.message || 'Не удалось применить решение преподавателя', 'red');
       }
     }
 
     async function resetDemoData() {
       try {
         await fetch('/api/v1/demo/reset', { method: 'POST' });
+        await loadCourses();
+        await loadSyllabusWeeks();
+        await initStudentSelector();
+        await loadStudentSession(currentStudentId);
         await refreshDashboard();
         showToast('Демо сброшено', 'Когорта возвращена к исходным каноническим студентам.', 'slate');
       } catch (err) {
@@ -1691,7 +2223,7 @@
       if (panel) {
         panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
-      showToast('Отчет открыт', `Отображены доказательства для ${studentId}`, 'purple');
+      showToast('Доказательная карточка', `Отображены аудиторские данные для ${studentId}`, 'purple');
     }
 
     function showToast(title, message, color = 'violet') {
@@ -1823,6 +2355,7 @@
       formData.append('file', selectedLectureFile);
       formData.append('week_number', weekNum);
       formData.append('topic_name', topicName);
+      formData.append('course_id', currentCourseId);
 
       try {
         setTimeout(() => {
