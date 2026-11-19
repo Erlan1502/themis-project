@@ -547,6 +547,42 @@ def get_ingestion_job(job_id: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def update_ingestion_job(
+    job_id: str,
+    status: Optional[str] = None,
+    progress: Optional[int] = None,
+    total: Optional[int] = None,
+    message: Optional[str] = None,
+    error: Optional[str] = None
+):
+    """Обновить статус и прогресс задачи индексации в SQLite."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    fields = []
+    params = []
+    if status is not None:
+        fields.append("status = ?")
+        params.append(status)
+    if progress is not None:
+        fields.append("progress = ?")
+        params.append(progress)
+    if total is not None:
+        fields.append("total = ?")
+        params.append(total)
+    if message is not None:
+        fields.append("message = ?")
+        params.append(message)
+    if error is not None:
+        fields.append("error = ?")
+        params.append(error)
+    fields.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(job_id)
+    if fields:
+        cursor.execute(f"UPDATE ingestion_jobs SET {', '.join(fields)} WHERE job_id = ?", tuple(params))
+        conn.commit()
+    conn.close()
+
+
 # =====================================================================
 # СЕССИИ И РЕПЛИКИ (SESSIONS, DIALOG_TURNS)
 # =====================================================================

@@ -109,33 +109,55 @@ class ThemisVectorStore:
         except Exception as e:
             logger.warning(f"Ошибка при прогреве ThemisVectorStore: {e}")
 
+    def delete_topic_chunks(self, topic_id: str, course_id: str = "prog_ai_2026") -> int:
+        """
+        Селективное удаление старых чанков только этой пары (course_id, topic_id)
+        перед повторной или инкрементальной индексацией.
+        """
+        try:
+            resolved = resolve_topic_id(topic_id)
+            self.collection.delete(where={"$and": [{"course_id": course_id}, {"topic_id": resolved}]})
+            logger.info(f"Селективно удалены старые чанки для ({course_id}, {resolved})")
+            return 1
+        except Exception as e:
+            logger.debug(f"Удаление старых чанков ({course_id}, {topic_id}): {e}")
+            return 0
+
     def add_slides(
         self,
         topic_id: str,
         week_number: int,
         slides_data: List[Dict[str, Any]],
-        course_id: str = "prog_ai_2026"
+        course_id: str = "prog_ai_2026",
+        delete_old: bool = False
     ) -> int:
         """
-        Индексирует слайды презентации в HNSW граф.
-        Каждый чанк содержит текст слайда, номер, заголовок и метаданные курса и темы.
+        Индексирует слайды презентации или чанки Markdown в HNSW граф ChromaDB.
+        Каждый чанк содержит семантический текст (с breadcrumbs), заголовок и метаданные курса и темы.
         """
         if not slides_data:
             return 0
 
         resolved_topic = resolve_topic_id(topic_id)
+
+        if delete_old:
+            self.delete_topic_chunks(topic_id=resolved_topic, course_id=course_id)
+
         ids = []
         documents = []
         metadatas = []
 
-        for slide in slides_data:
-            slide_no = slide.get("slide_number", 1)
-            chunk_id = f"{course_id}_{resolved_topic}_slide_{slide_no}"
+        for idx, slide in enumerate(slides_data, start=1):
+            slide_no = slide.get("slide_number", idx)
+            chunk_id = slide.get("chunk_id") or f"{course_id}_{resolved_topic}_slide_{slide_no}"
             
-            # Формируем семантический текст для векторного поиска
-            text = f"Слайд {slide_no}: {slide.get('title', '')}\n{slide.get('text', '')}"
-            if slide.get("concepts"):
-                text += f"\nКлючевые концепты: {', '.join(slide['concepts'])}"
+            # Если текст уже содержит разметку и хлебные крошки от Smart Chunker
+            if "text" in slide and slide["text"]:
+                text = slide["text"]
+            else:
+                text = f"Слайд {slide_no}: {slide.get('title', '')}\n{slide.get('text', '')}"
+                if slide.get("concepts"):
+                    text += f"\nКлючевые концепты: {', '.join(slide['concepts'])}"
 
             ids.append(chunk_id)
             documents.append(text)
@@ -146,6 +168,8 @@ class ThemisVectorStore:
                 "slide_number": slide_no,
                 "title": slide.get("title", ""),
                 "has_code": 1 if slide.get("has_code") else 0,
+                "has_table": 1 if slide.get("has_table") else 0,
+                "has_math": 1 if slide.get("has_math") else 0,
             })
 
         # Добавляем или обновляем в ChromaDB батчами по 100 чанков
@@ -156,8 +180,25 @@ class ThemisVectorStore:
                 documents=documents[i:i+batch_size],
                 metadatas=metadatas[i:i+batch_size]
             )
-        logger.info(f"Проиндексировано {len(ids)} слайдов для курса {course_id}, темы {resolved_topic}")
+        logger.info(f"Проиндексировано {len(ids)} чанков для курса {course_id}, темы {resolved_topic}")
         return len(ids)
+
+    def add_chunks(
+        self,
+        topic_id: str,
+        week_number: int,
+        chunks_data: List[Dict[str, Any]],
+        course_id: str = "prog_ai_2026",
+        delete_old: bool = True
+    ) -> int:
+        """Прямой алиас для селективного добавления семантических чанков."""
+        return self.add_slides(
+            topic_id=topic_id,
+            week_number=week_number,
+            slides_data=chunks_data,
+            course_id=course_id,
+            delete_old=delete_old
+        )
 
     def search_relevant_slides(
         self,

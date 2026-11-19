@@ -15,7 +15,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
@@ -66,7 +66,12 @@ from backend.database import (
     get_courses,
     save_syllabus_week,
     save_lecture_glossary,
+    save_ingestion_job,
+    get_ingestion_job,
+    update_ingestion_job,
 )
+from backend.markdown_converter import markdown_converter
+from backend.chunker import smart_chunk_markdown
 from backend.ingestion_service import ingestion_service, UPLOADS_DIR
 from backend.vector_store import vector_store
 
@@ -350,66 +355,195 @@ async def get_syllabus_weeks(course_id: Optional[str] = Query(None)):
     return rag_service.get_all_weeks(course_id=course_id)
 
 
-@app.post("/api/v1/course/upload")
-async def upload_course_lecture(
+@app.get("/api/v1/course/jobs/{job_id}")
+async def get_course_ingestion_job_status(job_id: str):
+    """
+    Эндпоинт отслеживания статуса фоновой задачи автономной индексации курса.
+    Возвращает текущую стадию, прогресс (0-100%) и детальное сообщение для UI:
+    QUEUED -> CONVERTING -> STRUCTURING -> CHUNKING -> INDEXING -> COMPLETED (или FAILED).
+    """
+    job = get_ingestion_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Задача индексации {job_id} не найдена")
+
+    return {
+        "job_id": job["job_id"],
+        "course_id": job["course_id"],
+        "status": job["status"],
+        "stage": job["status"],
+        "progress": job["progress"],
+        "total": job["total"],
+        "message": job["message"] or "",
+        "error": job["error"],
+        "updated_at": job["updated_at"]
+    }
+
+
+@app.post("/api/v1/courses/{course_id}/ingest", status_code=202)
+async def ingest_course_materials(
+    course_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    week_number: int = Form(...),
-    topic_name: str = Form(...),
-    course_id: str = Form("prog_ai_2026"),
+    week_number: Optional[int] = Form(None),
+    topic_name: Optional[str] = Form(None),
 ):
     """
-    Эндпоинт загрузки и онлайновой индексации лекций курса (PPTX / PDF).
-    Демонстрирует Zero-Config Ingestion на IT Fest:
-    1. Сохраняет файл в data/uploads/
-    2. Разбирает слайды на семантические чанки
-    3. Индексирует в ChromaDB (HNSW граф) с помощью модели эмбеддингов BGE-M3
-    4. Автоматически извлекает глоссарий и генерирует стартовый сократический триггер
-    5. Регистрирует новую неделю в силлабусе курса в памяти и персистентно в SQLite
+    Автономный асинхронный эндпоинт загрузки материалов курса (P1 Zero-Config Ingestion).
+    Принимает файл (.pdf, .pptx, .docx, .ipynb, .md, .txt, .zip), создает job_id,
+    стартует фоновую задачу и немедленно возвращает 202 Accepted.
+    """
+    filename = file.filename or "materials.bin"
+    ext = os.path.splitext(filename)[1].lower()
+    supported_exts = {".pptx", ".ppt", ".pdf", ".docx", ".doc", ".ipynb", ".md", ".txt", ".zip"}
+    if ext not in supported_exts:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Формат файла {ext} не поддерживается. Разрешены: {', '.join(sorted(supported_exts))}"
+        )
+
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    saved_path = os.path.join(UPLOADS_DIR, f"{job_id}_{filename}")
+    with open(saved_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    save_ingestion_job(
+        job_id=job_id,
+        course_id=course_id,
+        status="QUEUED",
+        progress=0,
+        total=0,
+        message=f"Файл {filename} принят в очередь. Подготовка к конвертации..."
+    )
+
+    background_tasks.add_task(
+        ingestion_service.execute_ingestion_job,
+        job_id=job_id,
+        file_path=saved_path,
+        filename=filename,
+        course_id=course_id,
+        week_number=week_number,
+        topic_name=topic_name
+    )
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id": job_id,
+            "course_id": course_id,
+            "status": "QUEUED",
+            "message": f"Файл {filename} принят в обработку. Отслеживайте прогресс по /api/v1/course/jobs/{job_id}"
+        }
+    )
+
+
+@app.post("/api/v1/course/upload")
+async def upload_course_lecture(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    week_number: Optional[int] = Form(None),
+    topic_name: Optional[str] = Form(None),
+    course_id: str = Form("prog_ai_2026"),
+    async_mode: bool = Form(False),
+):
+    """
+    Эндпоинт загрузки и онлайновой индексации лекций курса (PPTX / PDF / DOCX / IPYNB / MD / ZIP).
+    Поддерживает как асинхронный режим с живым отслеживанием прогресса (async_mode=True -> 202 Accepted),
+    так и синхронный режим обратной совместимости (async_mode=False -> 200 OK).
     """
     filename = file.filename or "lecture.pptx"
     ext = os.path.splitext(filename)[1].lower()
-    if ext not in [".pptx", ".pdf"]:
-        raise HTTPException(status_code=400, detail="Поддерживаются только презентации .pptx и документы .pdf")
+    supported_exts = {".pptx", ".ppt", ".pdf", ".docx", ".doc", ".ipynb", ".md", ".txt", ".zip"}
+    if ext not in supported_exts:
+        raise HTTPException(status_code=400, detail=f"Формат {ext} не поддерживается. Разрешены: {', '.join(sorted(supported_exts))}")
 
-    saved_path = os.path.join(UPLOADS_DIR, f"week_{week_number}_{filename}")
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    saved_path = os.path.join(UPLOADS_DIR, f"{job_id}_{filename}")
     with open(saved_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    if async_mode:
+        save_ingestion_job(
+            job_id=job_id,
+            course_id=course_id,
+            status="QUEUED",
+            progress=0,
+            total=0,
+            message=f"Файл {filename} принят в очередь. Подготовка..."
+        )
+        background_tasks.add_task(
+            ingestion_service.execute_ingestion_job,
+            job_id=job_id,
+            file_path=saved_path,
+            filename=filename,
+            course_id=course_id,
+            week_number=week_number,
+            topic_name=topic_name
+        )
+        return JSONResponse(
+            status_code=202,
+            content={
+                "job_id": job_id,
+                "course_id": course_id,
+                "status": "QUEUED",
+                "message": f"Файл принят в обработку. Отслеживайте прогресс по /api/v1/course/jobs/{job_id}"
+            }
+        )
+        return JSONResponse(
+            status_code=202,
+            content={
+                "job_id": job_id,
+                "course_id": course_id,
+                "status": "QUEUED",
+                "message": f"Файл принят в обработку. Отслеживайте прогресс по /api/v1/course/jobs/{job_id}"
+            }
+        )
+
+    # Синхронный режим (обратная совместимость с существующими интеграционными тестами)
+    wn = week_number if week_number is not None else 11
+    tn = topic_name or "Новая тема курса"
+    topic_id = f"week_{wn:02d}_custom"
 
     try:
         if ext == ".pptx":
             slides_data = ingestion_service.parse_pptx(saved_path)
-        else:
+        elif ext == ".pdf":
             slides_data = ingestion_service.parse_pdf(saved_path)
+        else:
+            md_text = markdown_converter.convert_file(saved_path)
+            slides_data = smart_chunk_markdown(
+                markdown_text=md_text,
+                course_id=course_id,
+                topic_id=topic_id,
+                week_number=wn,
+                topic_name=tn
+            )
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Ошибка парсинга презентации: {str(e)}")
+        raise HTTPException(status_code=422, detail=f"Ошибка обработки документа: {str(e)}")
 
     if not slides_data:
-        raise HTTPException(status_code=422, detail="Не удалось извлечь слайды из загруженного файла")
+        raise HTTPException(status_code=422, detail="Не удалось извлечь слайды/чанки из загруженного файла")
 
-    topic_id = f"week_{week_number:02d}_custom"
-
-    # Векторизация и селективная индексация в HNSW граф ChromaDB в отдельном потоке
+    # Селективная векторизация с очисткой старых чанков
     indexed_count = await asyncio.to_thread(
         vector_store.add_slides,
         topic_id=topic_id,
-        week_number=week_number,
+        week_number=wn,
         slides_data=slides_data,
         course_id=course_id,
+        delete_old=True
     )
 
-    # Генерация метаданных и глоссария
     meta = ingestion_service.build_course_metadata(
         topic_id=topic_id,
-        week_number=week_number,
-        topic_name=topic_name,
+        week_number=wn,
+        topic_name=tn,
         slides=slides_data
     )
 
-    # Сохранение в постоянную реляционную базу SQLite
     save_syllabus_week(
         course_id=course_id,
         topic_id=topic_id,
-        week_number=week_number,
+        week_number=wn,
         title=meta["title"],
         topic_name=meta["topic_name"],
         initial_prompt=meta["initial_prompt"],
@@ -422,10 +556,9 @@ async def upload_course_lecture(
         terms=meta["glossary"]
     )
 
-    # Динамическая регистрация в силлабусе RAG-сервиса
     rag_service.register_dynamic_week(
         topic_id=topic_id,
-        week_number=week_number,
+        week_number=wn,
         title=meta["title"],
         topic_name=meta["topic_name"],
         initial_prompt=meta["initial_prompt"],
@@ -437,10 +570,10 @@ async def upload_course_lecture(
     return {
         "status": "SUCCESS",
         "message": "Лекция успешно обработана и проиндексирована в HNSW (BGE-M3)",
-        "week_number": week_number,
+        "week_number": wn,
         "topic_id": topic_id,
         "title": meta["title"],
-        "topic_name": topic_name,
+        "topic_name": tn,
         "slides_count": len(slides_data),
         "indexed_chunks": indexed_count,
         "glossary": meta["glossary"],

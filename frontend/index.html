@@ -571,14 +571,14 @@
 
       <!-- Drag & Drop Zone -->
       <div>
-        <label class="block text-xs font-semibold text-slate-300 mb-1.5">Файл презентации или конспекта (.pptx / .pdf):</label>
+        <label class="block text-xs font-semibold text-slate-300 mb-1.5">Материалы курса (.pdf, .pptx, .docx, .ipynb, .md, .zip):</label>
         <div id="drop-zone" onclick="document.getElementById('file-upload-input').click()" 
           class="border-2 border-dashed border-slate-700 hover:border-violet-500 rounded-xl p-6 text-center cursor-pointer transition bg-slate-950/50">
-          <input type="file" id="file-upload-input" accept=".pptx,.pdf" class="hidden" onchange="handleFileSelected(event)" />
+          <input type="file" id="file-upload-input" accept=".pptx,.pdf,.docx,.ipynb,.md,.txt,.zip" class="hidden" onchange="handleFileSelected(event)" />
           <div id="drop-zone-content" class="space-y-1">
             <div class="text-3xl">📥</div>
             <div class="text-xs font-semibold text-slate-200">Перетащите файл сюда или нажмите для выбора</div>
-            <div class="text-[11px] text-slate-500">Поддерживаются PowerPoint (.pptx) и конспекты (.pdf)</div>
+            <div class="text-[11px] text-slate-500">Поддерживаются .pptx, .pdf, .docx, .ipynb, .md и .zip архивы</div>
           </div>
           <div id="drop-zone-preview" class="hidden space-y-1 text-xs text-violet-300 font-mono">
             <span>Выбран файл: </span>
@@ -2332,7 +2332,7 @@
 
     async function submitLectureUpload() {
       if (!selectedLectureFile) {
-        showToast('Файл не выбран', 'Пожалуйста, выберите файл .pptx или .pdf для загрузки.', 'red');
+        showToast('Файл не выбран', 'Пожалуйста, выберите файл (.pdf, .pptx, .docx, .ipynb, .md, .zip) для загрузки.', 'red');
         return;
       }
 
@@ -2348,22 +2348,18 @@
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<span>Индексация...</span>';
 
-      statusText.textContent = '1/3 Извлечение слайдов и структуры презентации...';
-      progressBar.style.width = '30%';
+      statusText.textContent = 'Отправка файла на сервер...';
+      progressBar.style.width = '10%';
 
       const formData = new FormData();
       formData.append('file', selectedLectureFile);
       formData.append('week_number', weekNum);
       formData.append('topic_name', topicName);
       formData.append('course_id', currentCourseId);
+      formData.append('async_mode', 'true');
 
       try {
-        setTimeout(() => {
-          statusText.textContent = '2/3 Векторизация BAAI/bge-m3 и построение графа HNSW...';
-          progressBar.style.width = '70%';
-        }, 800);
-
-        const res = await fetch('/api/v1/course/upload', {
+        const res = await fetch(`/api/v1/courses/${currentCourseId}/ingest`, {
           method: 'POST',
           body: formData
         });
@@ -2373,22 +2369,59 @@
           throw new Error(errData.detail || 'Ошибка загрузки файла');
         }
 
-        const data = await res.json();
-        progressBar.style.width = '100%';
-        statusText.textContent = '3/3 Готово! Силлабус и RAG обновлены.';
+        const initialData = await res.json();
+        const jobId = initialData.job_id;
 
-        showToast('Лекция проиндексирована', `Успешно: ${data.slides_count} слайдов добавлены в HNSW (BGE-M3)`, 'emerald');
+        if (jobId) {
+          // Опрашиваем прогресс фоновой задачи
+          let completed = false;
+          let pollAttempts = 0;
+          const maxAttempts = 200; // До 2 минут
 
-        await loadSyllabusWeeks();
-        const select = document.getElementById('select-syllabus-week');
-        if (select) {
-          select.value = data.topic_id;
-          await onWeekChanged(data.topic_id);
+          while (!completed && pollAttempts < maxAttempts) {
+            pollAttempts++;
+            await new Promise(r => setTimeout(r, 600));
+
+            const jobRes = await fetch(`/api/v1/course/jobs/${jobId}`);
+            if (!jobRes.ok) continue;
+
+            const job = await jobRes.json();
+            const pct = Math.max(10, Math.min(100, job.progress || 10));
+            progressBar.style.width = pct + '%';
+
+            if (job.message) {
+              statusText.textContent = job.message;
+            }
+
+            if (job.status === 'COMPLETED') {
+              completed = true;
+              progressBar.style.width = '100%';
+              statusText.textContent = 'Готово! Силлабус и база знаний обновлены.';
+              showToast('Курс проиндексирован', job.message || 'Материалы успешно добавлены в HNSW (BGE-M3)', 'emerald');
+
+              await loadCourses();
+              await loadSyllabusWeeks();
+
+              setTimeout(() => {
+                closeUploadModal();
+                progressBox.classList.add('hidden');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span>⚡</span><span>Загрузить и проиндексировать в HNSW</span>';
+              }, 1200);
+              return;
+            } else if (job.status === 'FAILED') {
+              throw new Error(job.error || job.message || 'Ошибка индексации курса');
+            }
+          }
+        } else {
+          // Синхронный ответ (fallback)
+          progressBar.style.width = '100%';
+          statusText.textContent = 'Готово! Силлабус и RAG обновлены.';
+          showToast('Лекция проиндексирована', 'Успешно добавлены материалы в HNSW (BGE-M3)', 'emerald');
+          await loadCourses();
+          await loadSyllabusWeeks();
+          setTimeout(() => { closeUploadModal(); }, 1200);
         }
-
-        setTimeout(() => {
-          closeUploadModal();
-        }, 1200);
 
       } catch (err) {
         console.error('Upload error:', err);
