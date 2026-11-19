@@ -99,6 +99,24 @@
 
       <!-- Actions -->
       <div class="flex items-center space-x-2">
+        <!-- User Auth State Widget -->
+        <div id="auth-header-widget" class="flex items-center space-x-2">
+          <button id="btn-open-login" onclick="openLoginModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-violet-600/30 hover:bg-violet-600 text-violet-200 border border-violet-500/40 transition flex items-center space-x-1.5 cursor-pointer">
+            <span>🔐</span>
+            <span>Войти</span>
+          </button>
+
+          <div id="user-profile-badge" class="hidden flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1 text-xs">
+            <span id="badge-role-icon">🎓</span>
+            <div class="leading-tight">
+              <span id="badge-user-name" class="font-semibold text-slate-200 block truncate max-w-[130px]">Студент К.</span>
+              <span id="badge-user-role" class="text-[10px] text-violet-400 font-mono">stud_01</span>
+            </div>
+            <span id="badge-tg-status" class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30">TG: ⏳</span>
+            <button onclick="logoutUser()" title="Выйти" class="text-slate-400 hover:text-red-400 font-bold ml-1 cursor-pointer">✕</button>
+          </div>
+        </div>
+
         <button onclick="openTmaQrModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
           <span>📱</span>
           <span>Telegram Mini App</span>
@@ -184,6 +202,11 @@
         </div>
       </div>
 
+      <!-- Telegram Binding Card for Student (One-Time QR Deep Link) -->
+      <div id="student-telegram-card" class="transition-all duration-300">
+        <!-- Rendered dynamically by renderTelegramBindingCard() -->
+      </div>
+
       <!-- Group 1 Student Selector Bar -->
       <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div class="flex items-center space-x-3">
@@ -206,10 +229,6 @@
           <button onclick="resetCurrentStudent()" class="px-3.5 py-2.5 bg-rose-950/60 hover:bg-rose-900 text-rose-300 hover:text-rose-100 rounded-xl text-xs font-semibold border border-rose-700/60 transition flex items-center space-x-1.5 shrink-0 shadow" title="Откатить оценку студента до начальной очной (стереть сессию ИИ и вернуть в статус 'Без бота')">
             <span>↺</span>
             <span>Откатить до начальной</span>
-          </button>
-          <button onclick="restoreCanonicalStudent()" class="px-3.5 py-2.5 bg-violet-950/70 hover:bg-violet-900 text-violet-300 hover:text-white rounded-xl text-xs font-semibold border border-violet-600/60 transition flex items-center space-x-1.5 shrink-0 shadow" title="Загрузить канонический эталон (93.5, Z=+3.73σ)">
-            <span>⭐</span>
-            <span>Эталон (93.5)</span>
           </button>
           <button onclick="restartCurrentStudentSession()" class="px-3 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold border border-slate-700 transition flex items-center space-x-1 shrink-0" title="Очистить экран чата и начать сессию заново">
             <span>🔄</span>
@@ -626,6 +645,71 @@
   </div>
 
   <!-- =================================================================== -->
+  <!-- MODAL: ПЕРСОНАЛЬНАЯ АВТОРИЗАЦИЯ (СТУДЕНТЫ И ПРЕПОДАВАТЕЛЬ) -->
+  <!-- =================================================================== -->
+  <div id="modal-auth" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-violet-500/30 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center text-white shadow text-lg">
+            🔐
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Авторизация Themis</h3>
+            <p class="text-xs text-violet-300">Вход для 20 студентов и преподавателя</p>
+          </div>
+        </div>
+        <button onclick="closeLoginModal()" class="text-slate-400 hover:text-white text-xl font-mono leading-none">&times;</button>
+      </div>
+
+      <!-- Quick Demo Presets -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 font-mono">⚡ Быстрый вход (Сцена / Демо):</div>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" onclick="quickLogin('stud_01', 'themis2026')" class="py-2 px-2.5 bg-violet-950/60 hover:bg-violet-900/80 border border-violet-500/40 rounded-xl text-left transition flex items-center space-x-2 cursor-pointer">
+            <span class="text-lg">🎓</span>
+            <div class="leading-tight">
+              <div class="text-xs font-bold text-violet-200">Студент К.</div>
+              <div class="text-[10px] text-violet-400 font-mono">stud_01</div>
+            </div>
+          </button>
+          <button type="button" onclick="quickLogin('teacher', 'themis_prof_2026')" class="py-2 px-2.5 bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 rounded-xl text-left transition flex items-center space-x-2 cursor-pointer">
+            <span class="text-lg">👩‍🏫</span>
+            <div class="leading-tight">
+              <div class="text-xs font-bold text-indigo-200">Преподаватель</div>
+              <div class="text-[10px] text-indigo-400 font-mono">Белощицкая С.</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Credentials Form -->
+      <form onsubmit="event.preventDefault(); submitLogin();" class="space-y-3 pt-1">
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Имя пользователя (Логин):</label>
+          <input type="text" id="login-username" placeholder="stud_01 .. stud_20, student_k или teacher" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-violet-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Пароль:</label>
+          <input type="password" id="login-password" placeholder="themis2026 / themis_prof_2026" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-violet-500" />
+        </div>
+
+        <div id="login-error-msg" class="hidden text-xs text-rose-400 bg-rose-950/40 border border-rose-800/40 rounded-xl p-2.5"></div>
+
+        <div class="flex items-center space-x-2 pt-2 border-t border-slate-800">
+          <button type="submit" id="btn-submit-login" class="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition shadow flex items-center justify-center space-x-1.5 cursor-pointer">
+            <span>🚀</span>
+            <span>Войти в систему</span>
+          </button>
+          <button type="button" onclick="closeLoginModal()" class="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition cursor-pointer">
+            Отмена
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
   <!-- MODAL: TELEGRAM MINI APP QR-CODE & DEEP LINK (ШАГ 6) -->
   <!-- =================================================================== -->
   <div id="modal-tma-qr" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 hidden">
@@ -821,12 +905,14 @@
     // -----------------------------------------------------------------
     document.addEventListener('DOMContentLoaded', async () => {
       updateModeUI();
+      await initAuth();
       await loadCourses();
       await loadSyllabusWeeks();
       await initStudentSelector();
       await loadStudentSession(currentStudentId);
       await refreshDashboard();
       initAuditStream();
+      renderTelegramBindingCard();
     });
 
     // -----------------------------------------------------------------
@@ -846,6 +932,21 @@
         try {
           if (!event.data) return;
           const data = JSON.parse(event.data);
+
+          if (data.type === 'telegram_linked') {
+            console.log('[SSE] telegram_linked event received:', data);
+            const targetSid = (currentUser && currentUser.student_id) || currentStudentId;
+            if (data.student_id === targetSid) {
+              if (currentUser) {
+                currentUser.is_telegram_linked = true;
+                currentUser.telegram_username = data.telegram_username;
+              }
+              showToast('✅ Telegram привязан!', `Студент верифицирован: ${data.telegram_username || ''}`, 'emerald');
+              updateAuthUI();
+              renderTelegramBindingCard();
+            }
+          }
+
           if (data.type === 'audit_completed') {
             console.log('[SSE] audit_completed event received:', data);
             const sName = data.record?.student_name || data.student_id;
@@ -1100,6 +1201,7 @@
 
     async function onStudentChange(newStudentId) {
       await loadStudentSession(newStudentId);
+      renderTelegramBindingCard();
       showToast('Смена студента', `Выбран профиль: ${newStudentId}`, 'purple');
     }
 
@@ -2545,6 +2647,350 @@
     function openTmaInNewTab() {
       const currentWeek = activeTopicId || 'week_09_deep_learning';
       window.open(`/tma?topic=${currentWeek}`, '_blank');
+    }
+
+    // =================================================================
+    // ПЕРСОНАЛЬНАЯ АВТОРИЗАЦИЯ И ОДНОРАЗОВАЯ ПРИВЯЗКА TELEGRAM
+    // =================================================================
+    let currentUser = null;
+    let qrCountdownTimer = null;
+    let qrPollingTimer = null;
+
+    async function initAuth() {
+      const token = localStorage.getItem('themis_auth_token');
+      if (token) {
+        try {
+          const res = await fetch('/api/v1/auth/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            currentUser = { ...data, token };
+            updateAuthUI();
+            if (currentUser.role === 'teacher') {
+              switchView('professor');
+            } else if (currentUser.student_id) {
+              currentStudentId = currentUser.student_id;
+              const sel = document.getElementById('student-selector');
+              if (sel) sel.value = currentStudentId;
+            }
+          } else {
+            localStorage.removeItem('themis_auth_token');
+            currentUser = null;
+            updateAuthUI();
+          }
+        } catch(e) {
+          updateAuthUI();
+        }
+      } else {
+        updateAuthUI();
+      }
+    }
+
+    function openLoginModal() {
+      const m = document.getElementById('modal-auth');
+      if (m) {
+        m.classList.remove('hidden');
+        const err = document.getElementById('login-error-msg');
+        if (err) err.classList.add('hidden');
+      }
+    }
+
+    function closeLoginModal() {
+      const m = document.getElementById('modal-auth');
+      if (m) m.classList.add('hidden');
+    }
+
+    async function quickLogin(username, password) {
+      const uInput = document.getElementById('login-username');
+      const pInput = document.getElementById('login-password');
+      if (uInput) uInput.value = username;
+      if (pInput) pInput.value = password;
+      await submitLogin();
+    }
+
+    async function submitLogin() {
+      const uInput = document.getElementById('login-username');
+      const pInput = document.getElementById('login-password');
+      const errBox = document.getElementById('login-error-msg');
+      if (errBox) errBox.classList.add('hidden');
+
+      const username = uInput?.value.trim();
+      const password = pInput?.value;
+      if (!username || !password) return;
+
+      try {
+        const res = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (errBox) {
+            errBox.textContent = data.detail || 'Неверный логин или пароль';
+            errBox.classList.remove('hidden');
+          }
+          return;
+        }
+
+        localStorage.setItem('themis_auth_token', data.token);
+        currentUser = data;
+        closeLoginModal();
+        updateAuthUI();
+
+        if (data.role === 'teacher') {
+          switchView('professor');
+          showToast('Успешный вход', `Преподаватель: ${data.display_name}`, 'indigo');
+        } else {
+          switchView('student');
+          if (data.student_id) {
+            currentStudentId = data.student_id;
+            localStorage.setItem('themis_active_student_id', currentStudentId);
+            const sel = document.getElementById('student-selector');
+            if (sel) sel.value = currentStudentId;
+            await loadStudentSession(currentStudentId);
+          }
+          showToast('Успешный вход', `Студент: ${data.display_name}`, 'emerald');
+          renderTelegramBindingCard();
+        }
+      } catch (err) {
+        console.error('Login error:', err);
+        if (errBox) {
+          errBox.textContent = 'Ошибка сервиса авторизации';
+          errBox.classList.remove('hidden');
+        }
+      }
+    }
+
+    async function logoutUser() {
+      const token = localStorage.getItem('themis_auth_token');
+      if (token) {
+        try {
+          await fetch('/api/v1/auth/logout', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+        } catch(e) {}
+      }
+      localStorage.removeItem('themis_auth_token');
+      currentUser = null;
+      updateAuthUI();
+      renderTelegramBindingCard();
+      showToast('Выход', 'Сессия завершена', 'slate');
+    }
+
+    function updateAuthUI() {
+      const btnOpen = document.getElementById('btn-open-login');
+      const badge = document.getElementById('user-profile-badge');
+      const nameEl = document.getElementById('badge-user-name');
+      const roleEl = document.getElementById('badge-user-role');
+      const iconEl = document.getElementById('badge-role-icon');
+      const tgEl = document.getElementById('badge-tg-status');
+
+      if (currentUser && currentUser.token) {
+        if (btnOpen) btnOpen.classList.add('hidden');
+        if (badge) badge.classList.remove('hidden');
+        if (nameEl) nameEl.textContent = currentUser.display_name || currentUser.username;
+        if (roleEl) roleEl.textContent = currentUser.role === 'teacher' ? 'Преподаватель' : (currentUser.student_id || currentUser.username);
+        if (iconEl) iconEl.textContent = currentUser.role === 'teacher' ? '👩‍🏫' : '🎓';
+        if (tgEl) {
+          if (currentUser.role === 'teacher') {
+            tgEl.classList.add('hidden');
+          } else {
+            tgEl.classList.remove('hidden');
+            if (currentUser.is_telegram_linked) {
+              tgEl.textContent = currentUser.telegram_username ? `TG: ${currentUser.telegram_username}` : 'TG: ✅';
+              tgEl.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-300 border border-emerald-500/30';
+            } else {
+              tgEl.textContent = 'TG: ⏳';
+              tgEl.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30';
+            }
+          }
+        }
+      } else {
+        if (btnOpen) btnOpen.classList.remove('hidden');
+        if (badge) badge.classList.add('hidden');
+      }
+    }
+
+    async function renderTelegramBindingCard() {
+      const container = document.getElementById('student-telegram-card');
+      if (!container) return;
+
+      const targetSid = (currentUser && currentUser.student_id) || currentStudentId;
+      let isLinked = false;
+      let tgUsername = null;
+
+      if (currentUser && currentUser.student_id === targetSid) {
+        isLinked = Boolean(currentUser.is_telegram_linked);
+        tgUsername = currentUser.telegram_username;
+      } else {
+        try {
+          const res = await fetch(`/api/v1/tma/me?student_id=${targetSid}`);
+          if (res.ok) {
+            const d = await res.json();
+            isLinked = d.telegram_id !== null && d.telegram_id !== undefined;
+            tgUsername = d.telegram_username || (d.telegram_id ? `ID: ${d.telegram_id}` : null);
+          }
+        } catch(e) {}
+      }
+
+      if (isLinked) {
+        if (qrPollingTimer) clearInterval(qrPollingTimer);
+        if (qrCountdownTimer) clearInterval(qrCountdownTimer);
+        container.innerHTML = `
+          <div class="bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-bold text-xl shrink-0">
+                ✅
+              </div>
+              <div>
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono">Telegram успешно привязан</span>
+                  <span class="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-900/60 text-emerald-200 border border-emerald-500/30 font-semibold">${escapeHtml(tgUsername || '@username')}</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-0.5">
+                  Теперь ваша очная оценка и сессии в безопасности (UDL Non-Penalty). Ответы надёжно верифицируются.
+                </p>
+              </div>
+            </div>
+            <button onclick="requestNewTelegramQr('${targetSid}')" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition cursor-pointer self-start sm:self-auto shrink-0">
+              🔄 Сменить привязку
+            </button>
+          </div>
+        `;
+      } else {
+        container.innerHTML = `
+          <div class="bg-gradient-to-r from-indigo-950/60 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-2xl p-4 shadow-xl space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div class="flex items-start space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center font-bold text-xl shrink-0">
+                  📱
+                </div>
+                <div>
+                  <div class="flex items-center space-x-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-indigo-400 font-mono">Привязка Telegram (One-Time Deep Link)</span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold">Не привязан</span>
+                  </div>
+                  <p class="text-xs text-slate-300 mt-1">
+                    Отсканируйте персональный одноразовый QR-код для привязки мобильного Telegram к ведомости группы.
+                  </p>
+                </div>
+              </div>
+              <button onclick="requestNewTelegramQr('${targetSid}')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow transition cursor-pointer flex items-center space-x-1.5 self-start sm:self-auto shrink-0">
+                <span>⚡</span>
+                <span>Получить QR-код</span>
+              </button>
+            </div>
+
+            <div id="student-qr-container" class="hidden pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center gap-4">
+              <div class="p-2.5 bg-white rounded-2xl shadow-xl shrink-0">
+                <img id="binding-qr-img" src="" alt="Binding QR" class="w-32 h-32 block rounded-lg" />
+              </div>
+              <div class="flex-1 space-y-2 text-center sm:text-left">
+                <div class="text-xs text-slate-300">
+                  Наведите камеру смартфона или нажмите кнопку ниже. В открывшемся боте нажмите <strong>Начать</strong> (<code class="text-indigo-300">/start</code>).
+                </div>
+                <div class="flex items-center justify-center sm:justify-start space-x-2 flex-wrap gap-2">
+                  <a id="binding-deep-link-btn" href="#" target="_blank" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow transition inline-flex items-center space-x-1.5">
+                    <span>🚀</span>
+                    <span>Открыть в Telegram</span>
+                  </a>
+                  <span id="binding-timer-display" class="text-xs font-mono text-amber-400 bg-amber-950/40 border border-amber-500/30 px-2.5 py-1 rounded-lg">
+                    ⏱️ 15:00
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        requestNewTelegramQr(targetSid);
+      }
+    }
+
+    async function requestNewTelegramQr(sId) {
+      const sid = sId || (currentUser && currentUser.student_id) || currentStudentId;
+      try {
+        const res = await fetch(`/api/v1/auth/telegram-qr?student_id=${sid}`);
+        if (!res.ok) throw new Error('Ошибка генерации QR');
+        const data = await res.json();
+
+        const qrContainer = document.getElementById('student-qr-container');
+        if (qrContainer) qrContainer.classList.remove('hidden');
+
+        const qrImg = document.getElementById('binding-qr-img');
+        if (qrImg) qrImg.src = data.qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(data.deep_link)}`;
+
+        const btnLink = document.getElementById('binding-deep-link-btn');
+        if (btnLink) btnLink.href = data.deep_link;
+
+        startBindingTimer(data.expires_in || 900);
+        startBindingStatusPolling(sid);
+      } catch (err) {
+        console.error('QR generation error:', err);
+      }
+    }
+
+    function startBindingTimer(durationSeconds) {
+      if (qrCountdownTimer) clearInterval(qrCountdownTimer);
+      let timeLeft = durationSeconds;
+      const timerEl = document.getElementById('binding-timer-display');
+
+      function updateTimer() {
+        if (timeLeft <= 0) {
+          clearInterval(qrCountdownTimer);
+          if (timerEl) {
+            timerEl.textContent = '⚠️ Токен истек';
+            timerEl.className = 'text-xs font-mono text-rose-400 bg-rose-950/40 border border-rose-500/30 px-2.5 py-1 rounded-lg';
+          }
+          return;
+        }
+        const mins = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
+        if (timerEl) {
+          timerEl.textContent = `⏱️ ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        timeLeft--;
+      }
+      updateTimer();
+      qrCountdownTimer = setInterval(updateTimer, 1000);
+    }
+
+    function startBindingStatusPolling(studentId) {
+      if (qrPollingTimer) clearInterval(qrPollingTimer);
+      qrPollingTimer = setInterval(async () => {
+        try {
+          if (currentUser && currentUser.token) {
+            const res = await fetch('/api/v1/auth/me', {
+              headers: { 'Authorization': `Bearer ${currentUser.token}` }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.is_telegram_linked) {
+                clearInterval(qrPollingTimer);
+                currentUser.is_telegram_linked = true;
+                currentUser.telegram_username = data.telegram_username;
+                updateAuthUI();
+                renderTelegramBindingCard();
+                showToast('✅ Telegram успешно привязан!', `Студент ${data.display_name} верифицирован`, 'emerald');
+                return;
+              }
+            }
+          } else {
+            const res = await fetch(`/api/v1/tma/me?student_id=${studentId}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.telegram_id !== null && data.telegram_id !== undefined) {
+                clearInterval(qrPollingTimer);
+                renderTelegramBindingCard();
+                showToast('✅ Telegram успешно привязан!', 'Сессия верифицирована', 'emerald');
+                return;
+              }
+            }
+          }
+        } catch(e) {}
+      }, 2500);
     }
 
     function escapeHtml(str) {

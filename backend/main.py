@@ -12,6 +12,7 @@ import shutil
 import asyncio
 import json
 import logging
+import urllib.parse
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +39,11 @@ from backend.models_schemas import (
     VectorStoreHealth,
     TmaLinkRequest,
     TmaMeResponse,
+    LoginRequest,
+    LoginResponse,
+    AuthMeResponse,
+    TelegramQrResponse,
+    LogoutResponse,
 )
 from backend.math_engine import ThemisMathEngine
 from backend.seed_data import (
@@ -75,6 +81,13 @@ from backend.database import (
     get_student_identity_by_telegram_id,
     link_telegram_identity,
     save_student_identity,
+    get_user_credential,
+    verify_password,
+    create_auth_session,
+    get_auth_session,
+    delete_auth_session,
+    create_telegram_binding_token,
+    _init_default_user_credentials,
 )
 from backend.markdown_converter import markdown_converter
 from backend.chunker import smart_chunk_markdown
@@ -119,6 +132,17 @@ class AuditBroadcaster:
             self._subscribers.discard(dq)
 
 audit_broadcaster = AuditBroadcaster()
+
+# Подключение диспетчера Telegram бота к SSE-бродкастеру
+async def _on_telegram_linked_broadcast(student_id: str, telegram_id: int, telegram_username: Optional[str]):
+    await audit_broadcaster.broadcast({
+        "type": "telegram_linked",
+        "student_id": student_id,
+        "telegram_id": telegram_id,
+        "telegram_username": telegram_username,
+    })
+
+telegram_bot.set_binding_callback(_on_telegram_linked_broadcast)
 
 # Хранилище сессий и записей в оперативной памяти (для мгновенной демонстрации и IT Fest)
 db_records: Dict[str, StudentAuditRecord] = {}
@@ -206,6 +230,8 @@ def reset_database(load_from_db_if_exists: bool = False):
         c.execute("DELETE FROM syllabus_weeks WHERE course_id != ? OR week_number > 10 OR topic_id LIKE '%custom%'", (CANONICAL_COURSE_ID,))
         c.execute("DELETE FROM lecture_glossary WHERE course_id != ? OR topic_id LIKE '%custom%'", (CANONICAL_COURSE_ID,))
         c.execute("DELETE FROM courses WHERE course_id != ?", (CANONICAL_COURSE_ID,))
+        c.execute("DELETE FROM telegram_binding_tokens")
+        c.execute("DELETE FROM auth_sessions")
         conn.commit()
         conn.close()
 
@@ -214,6 +240,7 @@ def reset_database(load_from_db_if_exists: bool = False):
             db_records[rec.student_id] = rec
         seed_sqlite_dialogs()
         sync_records_to_sqlite()
+        _init_default_user_credentials()
 
     rag_service.reload()
 
@@ -1901,6 +1928,135 @@ async def session_opt_out(request: Request, payload: Optional[Dict[str, Any]] = 
         "rectified_delta": 0.0,
         "zone": "NO_SIGNAL"
     }
+
+
+# =====================================================================
+# ПЕРСОНАЛЬНАЯ АВТОРИЗАЦИЯ И ОДНОРАЗОВАЯ ПРИВЯЗКА TELEGRAM
+# =====================================================================
+
+@app.post("/api/v1/auth/login", response_model=LoginResponse)
+async def auth_login(req: LoginRequest):
+    """
+    Эндпоинт входа в систему (для 20 студентов группы ИИ-201 и преподавателя).
+    Проверяет логин и пароль в user_credentials.
+    Возвращает токен сессии, роль, student_id и статус привязки Telegram.
+    """
+    cred = get_user_credential(req.username)
+    if not cred or not verify_password(req.password, cred["password_hash"]):
+        raise HTTPException(
+            status_code=401,
+            detail="Неверное имя пользователя или пароль"
+        )
+
+    sid = cred.get("student_id")
+    token = create_auth_session(
+        username=cred["username"],
+        role=cred["role"],
+        display_name=cred["display_name"],
+        student_id=sid
+    )
+
+    is_tg_linked = False
+    tg_username = None
+    if sid:
+        ident = get_student_identity(sid)
+        if ident and ident.get("telegram_id") is not None:
+            is_tg_linked = True
+            tg_username = ident.get("telegram_username")
+
+    return LoginResponse(
+        success=True,
+        token=token,
+        role=cred["role"],
+        student_id=sid,
+        display_name=cred["display_name"],
+        is_telegram_linked=is_tg_linked,
+        telegram_username=tg_username
+    )
+
+
+@app.get("/api/v1/auth/me", response_model=AuthMeResponse)
+async def auth_me(request: Request, token: Optional[str] = Query(None)):
+    """
+    Проверка текущей сессии пользователя и актуального статуса привязки Telegram.
+    Токен передается в заголовке Authorization: Bearer <token> или параметре ?token=...
+    """
+    auth_header = request.headers.get("Authorization")
+    extracted_token = None
+    if auth_header and "bearer" in auth_header.lower():
+        extracted_token = auth_header.split(maxsplit=1)[1].strip()
+    elif token:
+        extracted_token = token.strip()
+
+    if not extracted_token:
+        raise HTTPException(status_code=401, detail="Отсутствует токен авторизации")
+
+    sess = get_auth_session(extracted_token)
+    if not sess:
+        raise HTTPException(status_code=401, detail="Сессия не найдена или истекла")
+
+    sid = sess.get("student_id")
+    is_tg_linked = False
+    tg_username = None
+    if sid:
+        ident = get_student_identity(sid)
+        if ident and ident.get("telegram_id") is not None:
+            is_tg_linked = True
+            tg_username = ident.get("telegram_username")
+
+    return AuthMeResponse(
+        authenticated=True,
+        username=sess["username"],
+        role=sess["role"],
+        student_id=sid,
+        display_name=sess["display_name"],
+        is_telegram_linked=is_tg_linked,
+        telegram_username=tg_username
+    )
+
+
+@app.post("/api/v1/auth/logout", response_model=LogoutResponse)
+async def auth_logout(request: Request, payload: Optional[Dict[str, Any]] = None):
+    """
+    Сброс сессии пользователя (логаут).
+    """
+    auth_header = request.headers.get("Authorization")
+    extracted_token = None
+    if auth_header and "bearer" in auth_header.lower():
+        extracted_token = auth_header.split(maxsplit=1)[1].strip()
+    elif payload and "token" in payload:
+        extracted_token = str(payload["token"]).strip()
+
+    if extracted_token:
+        delete_auth_session(extracted_token)
+
+    return LogoutResponse(success=True, message="Сессия успешно завершена")
+
+
+@app.get("/api/v1/auth/telegram-qr", response_model=TelegramQrResponse)
+async def auth_telegram_qr(student_id: str = Query(...)):
+    """
+    Генерация одноразового Deep Link и токена привязки Telegram-аккаунта (TTL 15 минут).
+    Возвращает: token ('bind_<12-hex>'), deep_link (https://t.me/{bot}?start=bind_{token}), expires_in (900).
+    """
+    clean_sid = student_id.strip()
+    ident = get_student_identity(clean_sid)
+    if not ident and clean_sid not in STUDENT_NAMES_MAP:
+        raise HTTPException(status_code=404, detail=f"Студент {clean_sid} не найден")
+
+    token_info = create_telegram_binding_token(student_id=clean_sid, ttl_seconds=900)
+    token = token_info["token"]
+
+    bot_username = settings.TELEGRAM_BOT_USERNAME or "ThemisExamBot"
+    deep_link = f"https://t.me/{bot_username}?start={token}"
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(deep_link)}"
+
+    return TelegramQrResponse(
+        token=token,
+        deep_link=deep_link,
+        expires_in=900,
+        qr_code_url=qr_url
+    )
 
 
 # =====================================================================

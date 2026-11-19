@@ -237,3 +237,45 @@ class TmaMeResponse(BaseModel):
     rectified_delta: float = 0.0
 
 
+# =====================================================================
+# 6. СХЕМЫ ПЕРСОНАЛЬНОЙ АВТОРИЗАЦИИ И ПРИВЯЗКИ TELEGRAM
+# =====================================================================
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    success: bool = True
+    token: str
+    role: str
+    student_id: Optional[str] = None
+    display_name: str
+    is_telegram_linked: bool = False
+    telegram_username: Optional[str] = None
+
+
+class AuthMeResponse(BaseModel):
+    authenticated: bool = True
+    username: str
+    role: str
+    student_id: Optional[str] = None
+    display_name: str
+    is_telegram_linked: bool = False
+    telegram_username: Optional[str] = None
+
+
+class LogoutResponse(BaseModel):
+    success: bool = True
+    message: str = "Сессия успешно завершена"
+
+
+class TelegramQrResponse(BaseModel):
+    token: str
+    deep_link: str
+    expires_in: int = 900
+    qr_code_url: Optional[str] = None
+
+
+

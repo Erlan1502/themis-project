@@ -10,10 +10,17 @@ telegram_bot.py
 """
 
 import logging
-from typing import Dict, Any, Optional
+import asyncio
+from typing import Dict, Any, Optional, Callable
 import httpx
 
 from backend.config import settings
+from backend.database import (
+    get_telegram_binding_token,
+    mark_binding_token_used,
+    link_telegram_identity,
+    get_student_identity,
+)
 
 logger = logging.getLogger("themis.telegram_bot")
 
@@ -31,6 +38,32 @@ class TelegramBotService:
         self.bot_token = bot_token or settings.TELEGRAM_BOT_TOKEN
         self.public_url = (public_url or settings.PUBLIC_URL).rstrip("/")
         self.bot_username = bot_username or settings.TELEGRAM_BOT_USERNAME
+        self._binding_callback: Optional[Callable] = None
+
+    def set_binding_callback(self, callback: Callable):
+        """Установить асинхронный колбэк при успешной привязке Telegram."""
+        self._binding_callback = callback
+
+    async def _notify_binding(self, student_id: str, telegram_id: int, telegram_username: Optional[str]):
+        """Оповещение веб-клиентов через SSE AuditBroadcaster о привязке Telegram."""
+        if self._binding_callback:
+            try:
+                res = self._binding_callback(student_id, telegram_id, telegram_username)
+                if asyncio.iscoroutine(res):
+                    await res
+            except Exception as e:
+                logger.error(f"Error in telegram_bot binding callback: {e}")
+        else:
+            try:
+                from backend.main import audit_broadcaster
+                await audit_broadcaster.broadcast({
+                    "type": "telegram_linked",
+                    "student_id": student_id,
+                    "telegram_id": telegram_id,
+                    "telegram_username": telegram_username,
+                })
+            except Exception as e:
+                logger.error(f"Error in direct audit_broadcaster broadcast: {e}")
 
     @property
     def is_dev_mode(self) -> bool:
@@ -130,6 +163,76 @@ class TelegramBotService:
             if text.startswith("/start"):
                 parts = text.split(maxsplit=1)
                 start_param = parts[1].strip() if len(parts) > 1 else None
+
+                # Проверка: является ли start_param одноразовым токеном привязки (One-Time Binding Deep Link)
+                is_binding_attempt = False
+                if start_param:
+                    if start_param.startswith("bind_") or get_telegram_binding_token(start_param) is not None:
+                        is_binding_attempt = True
+
+                if is_binding_attempt and start_param:
+                    token_rec = get_telegram_binding_token(start_param)
+                    if not token_rec or token_rec.get("status") in ("USED", "EXPIRED"):
+                        warning_text = (
+                            "⚠️ <b>Эта ссылка уже была использована или устарела.</b>\n\n"
+                            "Получите новый персональный QR-код в веб-кабинете."
+                        )
+                        await self.send_message(chat_id, warning_text)
+                        return {
+                            "ok": True,
+                            "action": "binding_rejected",
+                            "chat_id": chat_id,
+                            "reason": token_rec.get("status") if token_rec else "not_found"
+                        }
+
+                    # Токен валиден и находится в статусе PENDING
+                    student_id = token_rec["student_id"]
+                    user_id = user.get("id") or chat_id
+                    raw_user = user.get("username")
+                    telegram_username = f"@{raw_user}" if (raw_user and not raw_user.startswith("@")) else raw_user
+
+                    # 1. Привязываем Telegram аккаунт к student_id
+                    link_telegram_identity(student_id, user_id, telegram_username)
+
+                    # 2. Сжигаем токен (переводим в USED)
+                    mark_binding_token_used(token_rec["token"])
+
+                    # 3. Получаем имя студента
+                    identity = get_student_identity(student_id)
+                    display_name = (identity.get("display_name") if identity else None) or student_id
+                    group_str = "Группа 1"
+                    if identity and identity.get("group_id") and identity["group_id"] != "group_1":
+                        group_str = identity["group_id"]
+
+                    # 4. Отправляем подтверждение со ссылкой на TMA
+                    confirm_text = (
+                        f"✅ Вы успешно авторизованы как <b>{display_name} ({group_str})</b>!\n\n"
+                        f"Ваш аккаунт Telegram привязан к ведомости. Нажмите кнопку ниже, чтобы открыть сократическую сессию:"
+                    )
+                    tma_url = f"{self.public_url}/tma"
+                    keyboard = {
+                        "inline_keyboard": [
+                            [
+                                {
+                                    "text": "🚀 Открыть сократическую сессию",
+                                    "web_app": {"url": tma_url}
+                                }
+                            ]
+                        ]
+                    }
+                    await self.send_message(chat_id, confirm_text, reply_markup=keyboard)
+
+                    # 5. Оповещаем веб-клиент через SSE AuditBroadcaster
+                    await self._notify_binding(student_id, user_id, telegram_username)
+
+                    return {
+                        "ok": True,
+                        "action": "binding_success",
+                        "chat_id": chat_id,
+                        "student_id": student_id,
+                        "telegram_id": user_id,
+                        "telegram_username": telegram_username
+                    }
 
                 welcome_text = (
                     f"🎓 <b>Здравствуйте, {user_name}!</b>\n\n"

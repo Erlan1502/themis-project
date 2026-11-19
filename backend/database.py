@@ -11,6 +11,9 @@ student_identities, ingestion_jobs).
 import sqlite3
 import json
 import os
+import hashlib
+import uuid
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 
 DB_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "themis_data.db")
@@ -30,8 +33,13 @@ def resolve_topic_id(topic_id: Optional[str]) -> str:
 
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+    except Exception:
+        pass
     return conn
 
 
@@ -275,6 +283,43 @@ def init_db():
         )
     """)
 
+    # 9. Таблица учетных записей пользователей (Студенты и Преподаватели)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_credentials (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            student_id TEXT,
+            role TEXT NOT NULL DEFAULT 'student',
+            display_name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 10. Таблица одноразовых токенов привязки Telegram (One-Time Binding Deep Link)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS telegram_binding_tokens (
+            token TEXT PRIMARY KEY,
+            student_id TEXT NOT NULL,
+            status TEXT DEFAULT 'PENDING',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL,
+            used_at TIMESTAMP
+        )
+    """)
+
+    # 11. Таблица активных веб-сессий авторизации
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            token TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            role TEXT NOT NULL,
+            student_id TEXT,
+            display_name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP
+        )
+    """)
+
     conn.commit()
 
     # Запускаем миграцию на случай существования старой схемы
@@ -313,6 +358,8 @@ def init_db():
 
     # Инициализация дефолтных студентов в student_identities
     _init_default_student_identities()
+    # Инициализация учетных записей студентов и преподавателя в user_credentials
+    _init_default_user_credentials()
 
 
 def _init_default_student_identities():
@@ -362,6 +409,278 @@ def _init_default_student_identities():
         conn.close()
     except Exception:
         pass
+
+
+def hash_password(password: str) -> str:
+    """Хеширование пароля через SHA-256."""
+    return hashlib.sha256(password.strip().encode("utf-8")).hexdigest()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Проверка совпадения пароля с его хешем."""
+    return hash_password(password) == password_hash
+
+
+def _init_default_user_credentials():
+    """
+    Предзаполнение учетных записей 20 студентов канонической группы ИИ-201 и преподавателя.
+    - Студенты: stud_01 .. stud_20, stud_aai_042, student_k, stud_05 с паролем themis2026.
+    - Преподаватель: teacher, beloshitskaya с паролем themis_prof_2026.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        student_pw_hash = hash_password("themis2026")
+        teacher_pw_hash = hash_password("themis_prof_2026")
+
+        # 1. Преподаватель (Белощицкая С., д.т.н., профессор)
+        teacher_accounts = [
+            ("teacher", "Белощицкая С. (Преподаватель)", "teacher", None),
+            ("beloshitskaya", "Белощицкая С., д.т.н., профессор", "teacher", None),
+        ]
+        for uname, dname, role, sid in teacher_accounts:
+            cursor.execute("""
+                INSERT OR REPLACE INTO user_credentials (username, password_hash, role, display_name, student_id)
+                VALUES (?, ?, ?, ?, ?)
+            """, (uname, teacher_pw_hash, role, dname, sid))
+
+        # 2. 20 студентов Группы 1
+        group_students = [
+            ("stud_aai_042", "Студент К. (Анонимный аудит)"),
+            ("stud_aai_001", "Алексей Смирнов"),
+            ("stud_aai_002", "Айгерим Тулегенова"),
+            ("stud_aai_003", "Даниил Морозов"),
+            ("stud_aai_004", "Екатерина Волкова"),
+            ("stud_aai_005", "Жандос Касымов"),
+            ("stud_aai_006", "Иван Новиков"),
+            ("stud_aai_007", "Мария Федорова"),
+            ("stud_aai_008", "Нурлан Сапаров"),
+            ("stud_aai_009", "Ольга Васильева"),
+            ("stud_aai_010", "Павел Ковалев"),
+            ("stud_aai_011", "Руслан Ахметов"),
+            ("stud_aai_015", "София Михайлова"),
+            ("stud_aai_019", "Тимур Исаев"),
+            ("stud_aai_020", "Александр Попов"),
+            ("stud_aai_021", "Виктория Лебедева"),
+            ("stud_aai_022", "Дмитрий Козлов"),
+            ("stud_aai_023", "Елена Соколова"),
+            ("stud_aai_024", "Игорь Павлов"),
+            ("stud_aai_025", "Ксения Макарова"),
+        ]
+
+        for idx, (sid, dname) in enumerate(group_students, start=1):
+            short_username = f"stud_{idx:02d}"  # stud_01 .. stud_20
+            # Основной логин stud_01 .. stud_20
+            cursor.execute("""
+                INSERT OR REPLACE INTO user_credentials (username, password_hash, role, display_name, student_id)
+                VALUES (?, ?, 'student', ?, ?)
+            """, (short_username, student_pw_hash, dname, sid))
+
+            # Логин по каноническому student_id (stud_aai_042, etc.)
+            cursor.execute("""
+                INSERT OR REPLACE INTO user_credentials (username, password_hash, role, display_name, student_id)
+                VALUES (?, ?, 'student', ?, ?)
+            """, (sid, student_pw_hash, dname, sid))
+
+        # Быстрые алиасы для Студента К. (stud_05, student_k)
+        stud_k_name = "Студент К. (Анонимный аудит)"
+        for alias in ["student_k", "stud_05"]:
+            cursor.execute("""
+                INSERT OR REPLACE INTO user_credentials (username, password_hash, role, display_name, student_id)
+                VALUES (?, ?, 'student', ?, 'stud_aai_042')
+            """, (alias, student_pw_hash, stud_k_name))
+
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def get_user_credential(username: str) -> Optional[Dict[str, Any]]:
+    """Получить запись учетных данных по логину (регистронезависимо)."""
+    if not username:
+        return None
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM user_credentials WHERE LOWER(username) = LOWER(?)", (username.strip(),))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_user_credentials() -> List[Dict[str, Any]]:
+    """Получить все учетные записи."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM user_credentials ORDER BY username ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def create_auth_session(
+    username: str,
+    role: str,
+    display_name: str,
+    student_id: Optional[str] = None,
+    ttl_days: int = 7
+) -> str:
+    """Создать новую активную веб-сессию авторизации."""
+    token = f"themis_sess_{uuid.uuid4().hex}"
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO auth_sessions (token, username, role, student_id, display_name, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (token, username, role, student_id, display_name, expires_at))
+    conn.commit()
+    conn.close()
+    return token
+
+
+def get_auth_session(token: str) -> Optional[Dict[str, Any]]:
+    """Получить активную сессию по токену с проверкой TTL."""
+    if not token:
+        return None
+    clean_token = token.replace("Bearer ", "").strip()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM auth_sessions WHERE token = ?", (clean_token,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    data = dict(row)
+    if data.get("expires_at"):
+        try:
+            exp = datetime.fromisoformat(data["expires_at"])
+            if datetime.now(timezone.utc) > exp:
+                delete_auth_session(clean_token)
+                return None
+        except Exception:
+            pass
+    return data
+
+
+def delete_auth_session(token: str) -> bool:
+    """Удалить сессию при логауте."""
+    if not token:
+        return False
+    clean_token = token.replace("Bearer ", "").strip()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM auth_sessions WHERE token = ?", (clean_token,))
+    cnt = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return cnt > 0
+
+
+def create_telegram_binding_token(student_id: str, ttl_seconds: int = 900) -> Dict[str, Any]:
+    """
+    Генерирует одноразовый 12-значный hex-токен привязки Telegram ('bind_<hex>') с TTL 15 минут (900 сек).
+    Предыдущие PENDING токены для этого student_id переводятся в EXPIRED.
+    """
+    raw_hex = uuid.uuid4().hex[:12]
+    token = f"bind_{raw_hex}"
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    # Экспирируем предыдущие незавершенные токены для этого студента
+    cursor.execute("""
+        UPDATE telegram_binding_tokens 
+        SET status = 'EXPIRED' 
+        WHERE student_id = ? AND status = 'PENDING'
+    """, (student_id,))
+
+    cursor.execute("""
+        INSERT INTO telegram_binding_tokens (token, student_id, status, created_at, expires_at)
+        VALUES (?, ?, 'PENDING', CURRENT_TIMESTAMP, ?)
+    """, (token, student_id, expires_at))
+    conn.commit()
+    conn.close()
+
+    return {
+        "token": token,
+        "student_id": student_id,
+        "status": "PENDING",
+        "expires_in": ttl_seconds,
+        "expires_at": expires_at,
+    }
+
+
+def get_telegram_binding_token(token_str: str) -> Optional[Dict[str, Any]]:
+    """Поиск токена привязки с поддержкой префикса 'bind_' или без него и проверкой срока годности."""
+    if not token_str:
+        return None
+    clean_token = token_str.strip()
+    alt_token = clean_token[5:] if clean_token.startswith("bind_") else f"bind_{clean_token}"
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM telegram_binding_tokens 
+        WHERE token = ? OR token = ?
+    """, (clean_token, alt_token))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    data = dict(row)
+    if data.get("status") == "PENDING" and data.get("expires_at"):
+        try:
+            exp = datetime.fromisoformat(data["expires_at"])
+            if datetime.now(timezone.utc) > exp:
+                mark_binding_token_expired(data["token"])
+                data["status"] = "EXPIRED"
+        except Exception:
+            pass
+    return data
+
+
+def mark_binding_token_used(token_str: str) -> bool:
+    """Перевести токен в статус USED (сжигание одноразового токена)."""
+    if not token_str:
+        return False
+    clean_token = token_str.strip()
+    alt_token = clean_token[5:] if clean_token.startswith("bind_") else f"bind_{clean_token}"
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE telegram_binding_tokens 
+        SET status = 'USED', used_at = CURRENT_TIMESTAMP 
+        WHERE (token = ? OR token = ?) AND status = 'PENDING'
+    """, (clean_token, alt_token))
+    cnt = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return cnt > 0
+
+
+def mark_binding_token_expired(token_str: str) -> bool:
+    """Перевести токен в статус EXPIRED."""
+    if not token_str:
+        return False
+    clean_token = token_str.strip()
+    alt_token = clean_token[5:] if clean_token.startswith("bind_") else f"bind_{clean_token}"
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE telegram_binding_tokens 
+        SET status = 'EXPIRED' 
+        WHERE (token = ? OR token = ?) AND status = 'PENDING'
+    """, (clean_token, alt_token))
+    cnt = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return cnt > 0
 
 
 # =====================================================================
@@ -520,6 +839,13 @@ def link_telegram_identity(
         WHERE student_id = ?
     """, (telegram_id, telegram_username, student_id))
     rows_affected = cursor.rowcount
+    if rows_affected == 0:
+        cursor.execute("""
+            INSERT OR REPLACE INTO student_identities 
+            (student_id, telegram_id, telegram_username, display_name)
+            VALUES (?, ?, ?, ?)
+        """, (student_id, telegram_id, telegram_username, student_id))
+        rows_affected = 1
     conn.commit()
     conn.close()
     return rows_affected > 0
