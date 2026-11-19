@@ -166,7 +166,6 @@ def reset_database(load_from_db_if_exists: bool = False):
     """
     db_records.clear()
     db_sessions.clear()
-    rag_service.reload()
 
     existing_audits = get_all_student_audits() if load_from_db_if_exists else []
     if existing_audits:
@@ -204,8 +203,9 @@ def reset_database(load_from_db_if_exists: bool = False):
         conn = get_connection()
         c = conn.cursor()
         c.execute("DELETE FROM student_audits")
-        c.execute("DELETE FROM syllabus_weeks WHERE week_number > 10 OR topic_id LIKE '%custom%'")
-        c.execute("DELETE FROM lecture_glossary WHERE topic_id LIKE '%custom%'")
+        c.execute("DELETE FROM syllabus_weeks WHERE course_id != ? OR week_number > 10 OR topic_id LIKE '%custom%'", (CANONICAL_COURSE_ID,))
+        c.execute("DELETE FROM lecture_glossary WHERE course_id != ? OR topic_id LIKE '%custom%'", (CANONICAL_COURSE_ID,))
+        c.execute("DELETE FROM courses WHERE course_id != ?", (CANONICAL_COURSE_ID,))
         conn.commit()
         conn.close()
 
@@ -214,6 +214,8 @@ def reset_database(load_from_db_if_exists: bool = False):
             db_records[rec.student_id] = rec
         seed_sqlite_dialogs()
         sync_records_to_sqlite()
+
+    rag_service.reload()
 
     # Загружаем сессии из SQLite в db_sessions при наличии
     if get_session("sess_canonical_stud_k"):
@@ -364,7 +366,8 @@ async def get_syllabus_weeks(course_id: Optional[str] = Query(None)):
     Возвращает список учебных недель курса 'Программирование для ИИ' (PAI 2026).
     Включает как канонические недели, так и динамически загруженные преподавателем.
     """
-    return rag_service.get_all_weeks(course_id=course_id)
+    cid = course_id or CANONICAL_COURSE_ID
+    return rag_service.get_all_weeks(course_id=cid)
 
 
 @app.get("/api/v1/course/jobs/{job_id}")
