@@ -431,6 +431,14 @@
         if (timerSeconds <= 0) {
           clearInterval(timerInterval);
           if (timerDisplay) timerDisplay.textContent = "00:00";
+          const input = document.getElementById('message-input');
+          const btn = document.getElementById('btn-send');
+          if (input) {
+            input.disabled = true;
+            input.placeholder = 'Время урока истекло. Окно рефлексии закрыто.';
+          }
+          if (btn) btn.disabled = true;
+          showCompletionModal();
           return;
         }
         timerSeconds--;
@@ -454,7 +462,9 @@
 
       const step = Math.min(turnNumber + 1, 3);
       if (stepLabel) {
-        stepLabel.textContent = turnNumber >= 3 ? "Завершено (3 из 3)" : `Шаг ${step} из 3`;
+        stepLabel.textContent = turnNumber >= 3 
+          ? `Шаг ${turnNumber} (Минимум выполнен • Окно открыто)` 
+          : `Шаг ${step} из 3`;
       }
 
       const activeCls = "flex items-center space-x-1 px-2 py-0.5 rounded-full bg-indigo-600/30 border border-indigo-500 text-indigo-300 font-semibold text-[10px]";
@@ -598,10 +608,6 @@
             });
             updateStepper(activeData.turns_count || activeData.turns.length);
           }
-
-          if (activeData.status === 'COMPLETED' || activeData.status === 'AUDITING' || activeData.turns_count >= 3) {
-            showCompletionModal();
-          }
         } else {
           // 3. Запускаем новую сессию
           const startResp = await fetch('/api/v1/session/start', {
@@ -657,14 +663,11 @@
                   appendMessage('tutor', data.tutor_message, { turn: turnNum });
                   updateStepper(turnNum);
                   haptic('light');
-                  if (data.session_status === 'COMPLETED' || data.session_status === 'AUDITING' || turnNum >= 3) {
-                    setTimeout(showCompletionModal, 1200);
-                  }
                 }
               }
             } else if (data.type === 'audit_completed') {
               if (data.student_id === currentStudentId) {
-                showCompletionModal();
+                haptic('success');
               }
             }
           } catch (e) {
@@ -776,9 +779,6 @@
                         if (studentBubble) studentBubble.setAttribute('data-turn', turnRes.turn_number);
                         if (tutorBubble) tutorBubble.setAttribute('data-turn', turnRes.turn_number);
                         updateStepper(turnRes.turn_number);
-                        if (turnRes.turn_number >= 3 || turnRes.session_status === 'COMPLETED' || turnRes.session_status === 'AUDITING') {
-                          setTimeout(showCompletionModal, 1200);
-                        }
                       }
                     }
                   }

@@ -48,6 +48,8 @@ from backend.models_schemas import (
 from backend.math_engine import ThemisMathEngine
 from backend.seed_data import (
     get_canonical_seed_records,
+    get_canonical_benchmark_stud_k,
+    seed_canonical_stud_k_dialog,
     STUDENT_NAMES_MAP,
     seed_sqlite_dialogs,
     GROUP_1_STUDENT_IDS,
@@ -232,6 +234,9 @@ def reset_database(load_from_db_if_exists: bool = False):
         c.execute("DELETE FROM courses WHERE course_id != ?", (CANONICAL_COURSE_ID,))
         c.execute("DELETE FROM telegram_binding_tokens")
         c.execute("DELETE FROM auth_sessions")
+        # Удаляем предзаполненную сессию Студента К. (sess_canonical_stud_k) и его реплики
+        c.execute("DELETE FROM sessions WHERE session_id = 'sess_canonical_stud_k' OR student_id = 'stud_aai_042'")
+        c.execute("DELETE FROM dialog_turns WHERE session_id = 'sess_canonical_stud_k' OR session_id NOT IN (SELECT session_id FROM sessions)")
         conn.commit()
         conn.close()
 
@@ -244,29 +249,7 @@ def reset_database(load_from_db_if_exists: bool = False):
 
     rag_service.reload()
 
-    # Загружаем сессии из SQLite в db_sessions при наличии
-    if get_session("sess_canonical_stud_k"):
-        turns = get_turns("sess_canonical_stud_k")
-        if turns:
-            db_sessions["sess_canonical_stud_k"] = {
-                "student_id": "stud_aai_042",
-                "course_id": CANONICAL_COURSE_ID,
-                "topic_id": CANONICAL_TOPIC_ID,
-                "turns": [
-                    {
-                        "turn_number": t["turn_number"],
-                        "student": t["student_message"],
-                        "system": t["system_reply"],
-                        "typing_duration_ms": t["typing_duration_ms"],
-                        "is_duplicate": bool(t["is_duplicate"]),
-                        "similarity_score": t["similarity_score"],
-                    }
-                    for t in turns
-                ],
-                "created_at": 0,
-                "active": False,
-            }
-
+    # Загружаем сессии из SQLite в db_sessions при наличии (Студент К. по умолчанию чистый без сессий)
     if get_session("sess_canonical_stud_015"):
         turns = get_turns("sess_canonical_stud_015")
         if turns:
@@ -316,8 +299,10 @@ async def run_background_audit(
         rec.session_status = "COMPLETED"
         engine.compute_individual_depth(rec)
         engine.compute_cohort_discrepancy(list(db_records.values()))
+        # Сессия остается активной (active=True), чтобы студент мог продолжать
+        # диалог (Шаг 4, Шаг 5 и т.д.) до истечения таймера окна доступа
         if session_id and session_id in db_sessions:
-            db_sessions[session_id]["active"] = False
+            db_sessions[session_id]["active"] = True
 
         sync_records_to_sqlite()
 
@@ -690,44 +675,48 @@ async def get_active_session(
         student_id = await resolve_student_context(request)
     resolved_topic = resolve_topic_id(topic_id)
     target_session_id = None
-    # 1. Поиск в памяти
-    for s_id, s_data in db_sessions.items():
+
+    # 1. Поиск в памяти строго для запрошенного курса и темы (от более свежих к старым)
+    for s_id, s_data in reversed(list(db_sessions.items())):
         if s_data.get("student_id") == student_id:
             s_course = s_data.get("course_id", "prog_ai_2026")
-            s_topic = resolve_topic_id(s_data.get("topic_id", CANONICAL_TOPIC_ID))
-            if s_course == course_id and (s_topic == resolved_topic or s_data.get("topic_id") == topic_id):
+            s_topic_raw = s_data.get("topic_id")
+            s_topic = resolve_topic_id(s_topic_raw) if s_topic_raw else None
+            if s_course == course_id and s_topic == resolved_topic:
                 target_session_id = s_id
                 break
 
-    # 2. Если в памяти нет, ищем в SQLite
+    # 2. Если в памяти нет, ищем строго в SQLite с фильтрацией по course_id и topic_id
     if not target_session_id:
         row = get_latest_session_for_student(student_id, topic_id=resolved_topic, course_id=course_id)
-        if not row and topic_id != resolved_topic:
-            row = get_latest_session_for_student(student_id, topic_id=topic_id, course_id=course_id)
         if row:
-            target_session_id = row["session_id"]
-            db_turns = get_turns(target_session_id)
-            db_sessions[target_session_id] = {
-                "student_id": row["student_id"],
-                "course_id": row["course_id"],
-                "topic_id": row["topic_id"],
-                "turns": [
-                    {
-                        "turn_number": t["turn_number"],
-                        "student": t["student_message"],
-                        "system": t["system_reply"],
-                        "typing_duration_ms": t["typing_duration_ms"],
-                        "is_duplicate": bool(t["is_duplicate"]),
-                        "similarity_score": t["similarity_score"],
-                    }
-                    for t in db_turns
-                ],
-                "created_at": 0,
-                "active": row["status"] == "ACTIVE",
-            }
+            row_topic = resolve_topic_id(row.get("topic_id"))
+            row_course = row.get("course_id", "prog_ai_2026")
+            if row_topic == resolved_topic and row_course == course_id:
+                target_session_id = row["session_id"]
+                db_turns = get_turns(target_session_id)
+                db_sessions[target_session_id] = {
+                    "student_id": row["student_id"],
+                    "course_id": row["course_id"],
+                    "topic_id": row["topic_id"],
+                    "turns": [
+                        {
+                            "turn_number": t["turn_number"],
+                            "student": t["student_message"],
+                            "system": t["system_reply"],
+                            "typing_duration_ms": t["typing_duration_ms"],
+                            "is_duplicate": bool(t["is_duplicate"]),
+                            "similarity_score": t["similarity_score"],
+                        }
+                        for t in db_turns
+                    ],
+                    "created_at": 0,
+                    "active": row["status"] == "ACTIVE",
+                }
 
     initial_prompt = rag_service.get_initial_prompt(resolved_topic)
 
+    # Строгая проверка: если сессия не найдена или принадлежит другой теме/курсу — НИКОГДА не возвращать чужую сессию!
     if not target_session_id or target_session_id not in db_sessions:
         return {
             "found": False,
@@ -740,6 +729,18 @@ async def get_active_session(
         }
 
     sess = db_sessions[target_session_id]
+    sess_topic = resolve_topic_id(sess.get("topic_id"))
+    sess_course = sess.get("course_id", "prog_ai_2026")
+    if sess_topic != resolved_topic or sess_course != course_id:
+        return {
+            "found": False,
+            "student_id": student_id,
+            "session_id": None,
+            "status": "OPTED_OUT",
+            "turns": [],
+            "turns_count": 0,
+            "initial_prompt": initial_prompt,
+        }
     non_dup_turns = [t for t in sess["turns"] if not t.get("is_duplicate")]
     turns_count = len(non_dup_turns)
     rec = db_records.get(student_id)
@@ -1748,15 +1749,10 @@ async def restore_canonical_student(student_id: str):
     """
     Восстановление канонического эталонного состояния студента (для быстрой демонстрации Студента К. 93.5).
     """
-    canonical_list = get_canonical_seed_records()
-    target_canonical = next((r for r in canonical_list if r.student_id == student_id), None)
-    if not target_canonical:
-        raise HTTPException(status_code=404, detail="Каноническая запись для студента не найдена")
-
-    db_records[student_id] = target_canonical
-
     if student_id == "stud_aai_042":
-        seed_sqlite_dialogs()
+        target_canonical = get_canonical_benchmark_stud_k()
+        db_records[student_id] = target_canonical
+        seed_canonical_stud_k_dialog()
         db_sessions["sess_canonical_stud_k"] = {
             "student_id": "stud_aai_042",
             "course_id": "prog_ai_2026",
@@ -1790,6 +1786,12 @@ async def restore_canonical_student(student_id: str):
             "created_at": 0,
             "active": True,
         }
+    else:
+        canonical_list = get_canonical_seed_records()
+        target_canonical = next((r for r in canonical_list if r.student_id == student_id), None)
+        if not target_canonical:
+            raise HTTPException(status_code=404, detail="Каноническая запись для студента не найдена")
+        db_records[student_id] = target_canonical
 
     engine.compute_cohort_discrepancy(list(db_records.values()))
     sync_records_to_sqlite()

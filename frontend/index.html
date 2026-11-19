@@ -820,7 +820,7 @@
     // =================================================================
     let currentCourseId = 'prog_ai_2026';
     let currentStudentId = localStorage.getItem('themis_active_student_id') || 'stud_aai_042';
-    let currentSessionId = localStorage.getItem('themis_session_' + currentStudentId) || null;
+    let currentSessionId = localStorage.getItem('themis_session_' + currentStudentId + '_' + activeTopicId) || null;
     let selectedReportStudentId = 'stud_aai_042';
     let currentTurnNumber = 0;
     let activeTopicId = 'week_09_deep_learning'; // Default: Week 9 / topic_05
@@ -995,14 +995,14 @@
 
                 if (data.session_status === 'AUDITING' || data.session_status === 'COMPLETED' || turnNum >= 3) {
                   if (badge) {
-                    badge.textContent = `Шаг 3/3 (AUDITING)`;
-                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+                    badge.textContent = `Шаг ${turnNum} (Минимум выполнен • Окно открыто)`;
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-900/60 text-emerald-300 border border-emerald-500/40';
                   }
                   if (cardStatus) {
-                    cardStatus.textContent = 'Аудит выполняется...';
-                    cardStatus.className = 'text-amber-400 font-semibold animate-pulse';
+                    cardStatus.textContent = 'Минимум выполнен • Аудит запущен (Окно открыто)';
+                    cardStatus.className = 'text-emerald-400 font-semibold';
                   }
-                  showToast('📱 Синхронизация из Telegram', `Получен ответ на Шаг ${turnNum} из 3. Аудит запущен.`, 'purple');
+                  showToast('📱 Синхронизация из Telegram', `Получен ответ на Шаг ${turnNum}. Минимум выполнен, окно урока открыто.`, 'purple');
                 } else {
                   if (badge) {
                     badge.textContent = `Шаг ${turnNum}/3 (В процессе)`;
@@ -1045,13 +1045,13 @@
             if (data.student_id === currentStudentId) {
               const cardStatus = document.getElementById('stud-diag-status');
               if (cardStatus) {
-                cardStatus.textContent = `Сессия завершена (${sScore})`;
-                cardStatus.className = 'text-violet-400 font-semibold';
+                cardStatus.textContent = `Минимум выполнен (${sScore}) • Окно открыто`;
+                cardStatus.className = 'text-emerald-400 font-semibold';
               }
               const badge = document.getElementById('badge-confidence');
               if (badge) {
-                badge.textContent = 'Шаг 3/3 (Сессия завершена)';
-                badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+                badge.textContent = `Шаг ${currentTurnNumber || 3} (Минимум выполнен • Окно открыто)`;
+                badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-900/60 text-emerald-300 border border-emerald-500/40';
               }
             }
 
@@ -1179,33 +1179,111 @@
       activeTopicId = newTopicId;
       applyWeekMetadata(newTopicId);
 
-      // Reset student chat for the new week
-      currentTurnNumber = 0;
+      // 1. Полностью очищаем чат
       const chatContainer = document.getElementById('chat-messages');
-      const week = syllabusWeeks.find(w => w.topic_id === newTopicId);
-      const promptText = week ? week.initial_prompt : 'Привет! Расскажи свои рассуждения по теме.';
+      if (chatContainer) chatContainer.innerHTML = '';
 
-      chatContainer.innerHTML = `
-        <div class="flex items-start space-x-3">
+      // 2. Сбрасываем currentTurnNumber = 0, currentSessionId = null
+      currentTurnNumber = 0;
+      currentSessionId = null;
+
+      // 3. Сбрасываем бейдж и статус
+      const badge = document.getElementById('badge-confidence');
+      if (badge) {
+        badge.textContent = 'Шаг 0/3 (NO_SIGNAL)';
+        badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700';
+      }
+      const cardStatus = document.getElementById('stud-diag-status');
+      if (cardStatus) {
+        cardStatus.textContent = 'Ожидает начала (Добровольный вход)';
+        cardStatus.className = 'text-slate-400 font-semibold';
+      }
+
+      // Разблокируем ввод и кнопку отправки
+      const input = document.getElementById('student-input');
+      const sendBtn = document.getElementById('btn-send-message');
+      if (input) {
+        input.disabled = false;
+        input.value = '';
+        input.placeholder = 'Введите ваш ответ или уточняющий вопрос тьютору...';
+      }
+      if (sendBtn) sendBtn.disabled = false;
+
+      // 4. Запрашиваем сессию строго для newTopicId
+      const week = syllabusWeeks.find(w => w.topic_id === newTopicId) || syllabusWeeks.find(w => w.week_number === 9);
+      try {
+        const res = await fetch(`/api/v1/session/active/${currentStudentId}?topic_id=${newTopicId}&course_id=${currentCourseId}`);
+        const data = await res.json();
+
+        // Если сессии для этой недели еще нет, отрисовываем стартовый вопрос ИМЕННО ЭТОЙ недели из syllabusWeeks
+        const promptText = (data && data.found && data.initial_prompt) || (week ? week.initial_prompt : 'Привет! Расскажи свои рассуждения по теме.');
+
+        const initDiv = document.createElement('div');
+        initDiv.className = 'flex items-start space-x-3';
+        initDiv.innerHTML = `
           <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0 text-white">
             AI
           </div>
           <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 max-w-xl text-sm leading-relaxed text-slate-200">
             ${escapeHtml(promptText)}
           </div>
-        </div>
-      `;
+        `;
+        if (chatContainer) chatContainer.appendChild(initDiv);
 
-      // Reset confidence badge
-      const badge = document.getElementById('badge-confidence');
-      badge.textContent = 'Шаг 0/3 (NO_SIGNAL)';
-      badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700';
+        if (data && data.found && data.session_id) {
+          currentSessionId = data.session_id;
+          currentTurnNumber = data.turns_count || 0;
+          localStorage.setItem('themis_session_' + currentStudentId + '_' + newTopicId, currentSessionId);
 
-      // Start new session
-      await startStudentSession(true);
-      await loadStudentSession(currentStudentId);
+          // Восстанавливаем сохраненные реплики
+          if (data.turns && data.turns.length > 0) {
+            data.turns.forEach(t => {
+              appendChatMessage('user', t.student, false, null, null, t.turn_number);
+              appendChatMessage('assistant', t.system, t.is_duplicate, null, null, t.turn_number);
+            });
+          }
+
+          // Синхронизируем таймер
+          const sessStartKey = 'themis_sess_start_' + currentSessionId;
+          const storedStart = localStorage.getItem(sessStartKey);
+          if (storedStart) {
+            const elapsed = Math.floor((Date.now() - parseInt(storedStart, 10)) / 1000);
+            const remaining = Math.max(0, (45 * 60) - elapsed);
+            startCountdownTimer(remaining);
+          } else {
+            localStorage.setItem(sessStartKey, Date.now().toString());
+            startCountdownTimer(45 * 60);
+          }
+
+          // Обновляем бейдж согласно правилу: после 3 шагов окно не закрывается!
+          if (currentTurnNumber >= 3) {
+            if (badge) {
+              badge.textContent = `Шаг ${currentTurnNumber} (Минимум выполнен • Окно открыто)`;
+              badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-900/60 text-emerald-300 border border-emerald-500/40';
+            }
+            if (cardStatus) {
+              cardStatus.textContent = 'Минимум выполнен • Окно открыто';
+              cardStatus.className = 'text-emerald-400 font-semibold';
+            }
+          } else if (currentTurnNumber > 0) {
+            if (badge) {
+              badge.textContent = `Шаг ${currentTurnNumber}/3 (В процессе)`;
+              badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-900/40 text-indigo-300 border border-indigo-500/30';
+            }
+            if (cardStatus) {
+              cardStatus.textContent = `В процессе диалога (Шаг ${currentTurnNumber}/3)`;
+              cardStatus.className = 'text-amber-400 font-semibold';
+            }
+          }
+        } else {
+          localStorage.removeItem('themis_session_' + currentStudentId + '_' + newTopicId);
+          startCountdownTimer(45 * 60);
+        }
+      } catch (err) {
+        console.error('Error in onWeekChanged:', err);
+      }
+
       await refreshDashboard();
-
       showToast('Смена недели', `Выбрана ${week ? week.title : newTopicId}`, 'purple');
     }
 
@@ -1248,6 +1326,25 @@
       countdownInterval = setInterval(() => {
         if (remaining <= 0) {
           clearInterval(countdownInterval);
+          // Сессия завершается строго по истечении таймера урока (time_remaining <= 0)
+          const input = document.getElementById('student-input');
+          const sendBtn = document.getElementById('btn-send-message');
+          if (input) {
+            input.disabled = true;
+            input.placeholder = 'Время урока истекло. Окно рефлексии закрыто.';
+          }
+          if (sendBtn) sendBtn.disabled = true;
+          const badge = document.getElementById('badge-confidence');
+          if (badge) {
+            badge.textContent = `Шаг ${currentTurnNumber} (Сессия завершена • Таймер истек)`;
+            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+          }
+          const cardStatus = document.getElementById('stud-diag-status');
+          if (cardStatus) {
+            cardStatus.textContent = 'Окно урока закрыто (45 мин истекли)';
+            cardStatus.className = 'text-slate-400 font-semibold';
+          }
+          showToast('Время урока истекло', 'Окно рефлексии автоматически завершено по таймеру (45 минут)', 'slate');
           return;
         }
         remaining--;
@@ -1350,7 +1447,7 @@
         if (data.found && data.session_id) {
           currentSessionId = data.session_id;
           currentTurnNumber = data.turns_count;
-          localStorage.setItem('themis_session_' + studentId, currentSessionId);
+          localStorage.setItem('themis_session_' + studentId + '_' + activeTopicId, currentSessionId);
 
           // Synchronize session timer
           const sessStartKey = 'themis_sess_start_' + currentSessionId;
@@ -1376,20 +1473,29 @@
             ? cachedRec.ai_depth_score.toFixed(1)
             : (student.ai_depth_score != null ? student.ai_depth_score.toFixed(1) : null);
 
+          // Разблокируем ввод и кнопку отправки (окно открыто до конца таймера)
+          const input = document.getElementById('student-input');
+          const sendBtn = document.getElementById('btn-send-message');
+          if (input) {
+            input.disabled = false;
+            input.placeholder = 'Введите ваш ответ или уточняющий вопрос тьютору...';
+          }
+          if (sendBtn) sendBtn.disabled = false;
+
           const badge = document.getElementById('badge-confidence');
           if (data.status === 'AUDITING') {
-            badge.textContent = `Шаг 3/3 (AUDITING)`;
-            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+            badge.textContent = `Шаг ${currentTurnNumber} (Минимум выполнен • Окно открыто)`;
+            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-900/60 text-emerald-300 border border-emerald-500/40';
             if (cardStatus) {
-              cardStatus.textContent = 'Аудит выполняется...';
+              cardStatus.textContent = 'Аудит выполняется... (Окно открыто)';
               cardStatus.className = 'text-amber-400 font-semibold animate-pulse';
             }
           } else if (currentTurnNumber >= 3 || data.status === 'COMPLETED') {
-            badge.textContent = `Шаг 3/3 (Сессия завершена)`;
-            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+            badge.textContent = `Шаг ${currentTurnNumber} (Минимум выполнен • Окно открыто)`;
+            badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-900/60 text-emerald-300 border border-emerald-500/40';
             if (cardStatus) {
-              cardStatus.textContent = realDepthScore ? `Сессия завершена (${realDepthScore})` : 'Сессия завершена';
-              cardStatus.className = 'text-violet-400 font-semibold';
+              cardStatus.textContent = realDepthScore ? `Минимум выполнен (${realDepthScore}) • Окно открыто` : 'Минимум выполнен • Окно открыто';
+              cardStatus.className = 'text-emerald-400 font-semibold';
             }
           } else if (currentTurnNumber > 0) {
             badge.textContent = `Шаг ${currentTurnNumber}/3 (В процессе)`;
@@ -1409,6 +1515,7 @@
         } else {
           currentSessionId = null;
           currentTurnNumber = 0;
+          localStorage.removeItem('themis_session_' + studentId + '_' + activeTopicId);
           startCountdownTimer(45 * 60);
           const badge = document.getElementById('badge-confidence');
           badge.textContent = 'Шаг 0/3 (NO_SIGNAL)';
@@ -1433,6 +1540,7 @@
         const res = await fetch(`/api/v1/student/${currentStudentId}/reset`, { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
+          localStorage.removeItem('themis_session_' + currentStudentId + '_' + activeTopicId);
           localStorage.removeItem('themis_session_' + currentStudentId);
           localStorage.removeItem('themis_sess_start_' + currentSessionId);
           currentSessionId = null;
@@ -1472,6 +1580,7 @@
         const res = await fetch(`/api/v1/student/${studentId}/reset`, { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
+          localStorage.removeItem('themis_session_' + studentId + '_' + activeTopicId);
           localStorage.removeItem('themis_session_' + studentId);
           if (currentStudentId === studentId) {
             currentSessionId = null;
@@ -1513,7 +1622,7 @@
         currentSessionId = data.session_id;
         currentTurnNumber = 0;
         typingStartTime = Date.now();
-        localStorage.setItem('themis_session_' + currentStudentId, currentSessionId);
+        localStorage.setItem('themis_session_' + currentStudentId + '_' + activeTopicId, currentSessionId);
         localStorage.setItem('themis_sess_start_' + currentSessionId, Date.now().toString());
         startCountdownTimer(data.time_remaining_seconds || (45 * 60));
         return data;
@@ -1662,7 +1771,7 @@
                 if (assistantMsgDiv) assistantMsgDiv.setAttribute('data-turn', currentTurnNumber);
                 pasteEventFired = false;
                 typingStartTime = Date.now();
-                localStorage.setItem('themis_session_' + currentStudentId, currentSessionId);
+                localStorage.setItem('themis_session_' + currentStudentId + '_' + activeTopicId, currentSessionId);
 
                 const badge = document.getElementById('badge-confidence');
                 const cardStatus = document.getElementById('stud-diag-status');
@@ -1676,13 +1785,13 @@
                   bubbleText.className = 'bg-amber-950/30 border border-amber-500/40 rounded-2xl rounded-tl-sm p-3.5 text-sm leading-relaxed text-amber-200';
                 } else {
                   if (turnRes.session_status === 'AUDITING' || currentTurnNumber >= 3) {
-                    badge.textContent = `Шаг 3/3 (AUDITING)`;
-                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-violet-900/60 text-violet-300 border border-violet-500/40';
+                    badge.textContent = `Шаг ${currentTurnNumber} (Минимум выполнен • Окно открыто)`;
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-900/60 text-emerald-300 border border-emerald-500/40';
                     if (cardStatus) {
-                      cardStatus.textContent = 'Аудит выполняется...';
-                      cardStatus.className = 'text-amber-400 font-semibold animate-pulse';
+                      cardStatus.textContent = 'Минимум выполнен • Окно открыто';
+                      cardStatus.className = 'text-emerald-400 font-semibold';
                     }
-                    showToast('Аудит запущен', 'Психометрический расчет глубины (Слой 3A/3B) запущен в фоне. Ожидайте расчетного значения...', 'purple');
+                    showToast('Минимум выполнен', 'Психометрический расчет глубины (Слой 3A/3B) запущен в фоне. Окно открыто — вы можете продолжать диалог до истечения таймера урока.', 'purple');
                   } else {
                     badge.textContent = `Шаг ${currentTurnNumber}/3 (${turnRes.session_confidence})`;
                     badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-900/40 text-indigo-300 border border-indigo-500/30';

@@ -66,6 +66,7 @@ def test_audit_report_dynamic_recommendation_purple_zone(client):
     Проверка динамической рекомендации для зоны HIGH_DISCREPANCY (Студент К.):
     Рекомендация ректификации оценки на основе реально освоенных концептов.
     """
+    client.post("/api/v1/student/stud_aai_042/restore_canonical")
     resp = client.get("/api/v1/audit/report/stud_aai_042")
     assert resp.status_code == 200
     report = resp.json()
@@ -79,6 +80,7 @@ def test_audit_report_dynamic_recommendation_purple_zone(client):
 
 def test_teacher_decision_accept_rectification(client):
     """Проверка принятия ректификации преподавателем с повышением оценки."""
+    client.post("/api/v1/student/stud_aai_042/restore_canonical")
     # Исходная оценка Студента К. — 70.0, диагностический скор — 93.5
     resp = client.post("/api/v1/audit/decision", json={
         "student_id": "stud_aai_042",

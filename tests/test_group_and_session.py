@@ -43,15 +43,27 @@ def test_group_1_has_exactly_20_distinct_students(client):
 
 
 def test_session_restoration_for_student_k(client):
-    """Проверка восстановления активной сессии для Студента К."""
+    """Проверка чистого начального состояния Студента К. и восстановления активной сессии после restore_canonical."""
+    # 1. По умолчанию Студент К. чистый
     resp = client.get("/api/v1/session/active/stud_aai_042")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["found"] is True
-    assert data["session_id"] is not None
-    assert data["status"] == "COMPLETED"
-    assert len(data["turns"]) == 3
-    assert data["turns_count"] == 3
+    assert data["found"] is False
+    assert data["status"] == "OPTED_OUT"
+    assert data["turns_count"] == 0
+
+    # 2. После вызова restore_canonical сессия восстанавливается
+    restore_resp = client.post("/api/v1/student/stud_aai_042/restore_canonical")
+    assert restore_resp.status_code == 200
+
+    resp2 = client.get("/api/v1/session/active/stud_aai_042")
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["found"] is True
+    assert data2["session_id"] is not None
+    assert data2["status"] == "COMPLETED"
+    assert len(data2["turns"]) == 3
+    assert data2["turns_count"] == 3
 
 
 def test_session_restoration_for_incomplete_student(client):
@@ -76,9 +88,13 @@ def test_session_for_opted_out_student(client):
 def test_dashboard_group_1_distribution_math(client):
     """
     Проверка математических инвариантов Группы 1:
-    Все 12 completed сессий находятся в Группе 1,
+    По умолчанию Студент К. в OPTED_OUT (11 completed).
+    После restore_canonical все 12 completed сессий находятся в Группе 1,
     поэтому median=2.5, mad=3.8, robust_sigma=5.63 сохраняются в точности по 'Документация.md'.
     """
+    # Восстанавливаем канонический эталон Студента К. для проверки канонических формул когорты
+    client.post("/api/v1/student/stud_aai_042/restore_canonical")
+
     resp = client.get("/api/v1/audit/dashboard?group_id=group_1")
     assert resp.status_code == 200
     data = resp.json()

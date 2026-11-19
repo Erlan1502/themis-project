@@ -115,35 +115,49 @@ def test_sync_in_class_grades(client):
 def test_dashboard(client):
     """
     Тест эндпоинта 4: получение дашборда когорты.
-    Инварианты: 20 студентов Группы 1, 12 completed, 8 opted_out/incomplete,
-    median=2.5, mad=3.8, sigma=5.63, alerts: green=9, yellow=2, red=0, purple=1.
+    Инварианты по умолчанию: 20 студентов Группы 1, Студент К. чистый (OPTED_OUT),
+    11 completed, 9 opted_out/incomplete.
+    После восстановления эталона Студента К. (restore_canonical):
+    12 completed, 8 opted_out/incomplete, median=2.5, mad=3.8, sigma=5.63, alerts: green=9, yellow=2, purple=1.
     """
     resp = client.get("/api/v1/audit/dashboard?topic_id=topic_05_regularization")
     assert resp.status_code == 200
     data = resp.json()
     assert data["project"] == "Themis Project"
     assert data["total_students"] == 20
-    assert data["sessions_completed"] == 12
-    assert data["opted_out_or_incomplete"] == 8
-    assert data["distribution"]["median_delta"] == 2.5
-    assert data["distribution"]["mad"] == 3.8
-    assert data["distribution"]["robust_sigma"] == 5.63
-    assert data["distribution"]["sigma_thresholds"]["plus_1_sigma"] == 8.13
-    assert data["distribution"]["sigma_thresholds"]["plus_2_sigma"] == 13.77
-    assert data["distribution"]["sigma_thresholds"]["plus_3_sigma"] == 19.40
-
-    assert data["alerts_count"]["green"] == 9
-    assert data["alerts_count"]["yellow"] == 2
-    assert data["alerts_count"]["red"] == 0
-    assert data["alerts_count"]["purple"] == 1
+    assert data["sessions_completed"] == 11
+    assert data["opted_out_or_incomplete"] == 9
+    assert data["alerts_count"]["purple"] == 0
     assert len(data["students"]) == 20
+
+    # Восстанавливаем канонический эталон Студента К. и проверяем полный когортный расчет
+    client.post("/api/v1/student/stud_aai_042/restore_canonical")
+    resp2 = client.get("/api/v1/audit/dashboard?topic_id=topic_05_regularization")
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["sessions_completed"] == 12
+    assert data2["opted_out_or_incomplete"] == 8
+    assert data2["distribution"]["median_delta"] == 2.5
+    assert data2["distribution"]["mad"] == 3.8
+    assert data2["distribution"]["robust_sigma"] == 5.63
+    assert data2["distribution"]["sigma_thresholds"]["plus_1_sigma"] == 8.13
+    assert data2["distribution"]["sigma_thresholds"]["plus_2_sigma"] == 13.77
+    assert data2["distribution"]["sigma_thresholds"]["plus_3_sigma"] == 19.40
+
+    assert data2["alerts_count"]["green"] == 9
+    assert data2["alerts_count"]["yellow"] == 2
+    assert data2["alerts_count"]["red"] == 0
+    assert data2["alerts_count"]["purple"] == 1
+    assert len(data2["students"]) == 20
 
 
 def test_report_stud_k(client):
     """
     Тест эндпоинта 5: AI Discrepancy Report для Студента К.
+    Студент К. восстанавливается в канонический эталон.
     Инварианты: grade=70.0, ai_depth_score=93.5, delta=23.5, z_score=3.73, zone=HIGH_DISCREPANCY.
     """
+    client.post("/api/v1/student/stud_aai_042/restore_canonical")
     resp = client.get("/api/v1/audit/report/stud_aai_042?topic_id=topic_05_regularization")
     assert resp.status_code == 200
     data = resp.json()

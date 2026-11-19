@@ -72,11 +72,9 @@ GROUP_1_STUDENT_IDS = [
 ]
 
 
-def get_canonical_seed_records() -> List[StudentAuditRecord]:
-    records: List[StudentAuditRecord] = []
-
-    # 1. Студент К. (stud_aai_042) — главный герой сценария (Use Case)
-    extraction_stud_k = AuditExtractionResult(
+def get_canonical_extraction_stud_k() -> AuditExtractionResult:
+    """Каноническое извлечение доказательств аудита для Студента К. (93.5)."""
+    return AuditExtractionResult(
         on_topic=True,
         student_quotes=[
             "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? "
@@ -100,19 +98,45 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
         ]
     )
 
-    stud_k = StudentAuditRecord(
+
+def get_canonical_benchmark_stud_k() -> StudentAuditRecord:
+    """Каноническая эталонная запись Студента К. (для восстановления через /restore_canonical)."""
+    rec = StudentAuditRecord(
         student_id="stud_aai_042",
         in_class_grade=70.0,
         session_status="COMPLETED",
         turns_count=3,
         total_tokens=180,
-        extraction=extraction_stud_k,
+        extraction=get_canonical_extraction_stud_k(),
         telemetry_clean=True,
         group_id="group_1",
         student_name=STUDENT_NAMES_MAP["stud_aai_042"],
     )
-    # Предварительный расчет глубины
-    ThemisMathEngine().compute_individual_depth(stud_k)
+    ThemisMathEngine().compute_individual_depth(rec)
+    return rec
+
+
+def get_canonical_seed_records() -> List[StudentAuditRecord]:
+    records: List[StudentAuditRecord] = []
+
+    # 1. Студент К. (stud_aai_042) — по умолчанию инициализируется как чистый студент
+    # (0 реплик, статус 'OPTED_OUT'), чтобы пользователь мог пройти диалог с чистого листа в реальном времени!
+    stud_k = StudentAuditRecord(
+        student_id="stud_aai_042",
+        in_class_grade=70.0,
+        session_status="OPTED_OUT",
+        turns_count=0,
+        total_tokens=0,
+        extraction=None,
+        ai_depth_score=None,
+        raw_delta=0.0,
+        rectified_delta=0.0,
+        z_score=0.0,
+        zone="NO_SIGNAL",
+        telemetry_clean=True,
+        group_id="group_1",
+        student_name=STUDENT_NAMES_MAP["stud_aai_042"],
+    )
 
     # 2. Остальные 11 завершенных сессий с точными дельтами:
     # deltas: [-3.2, -1.5, -1.3, 0.4, 1.1, 2.0, 3.0, 4.2, 6.3, 11.0, 13.2]
@@ -231,45 +255,50 @@ def get_group_records(group_id: str = "group_1") -> List[StudentAuditRecord]:
     return [r for r in all_records if r.group_id == group_id]
 
 
+def seed_canonical_stud_k_dialog():
+    """Сохранение канонической сессии Студента К. в SQLite при вызове restore_canonical."""
+    try:
+        from backend.database import save_session, save_turn
+        sess_k_id = "sess_canonical_stud_k"
+        save_session(sess_k_id, "stud_aai_042", "prog_ai_2026", "week_09_deep_learning", "COMPLETED")
+        save_turn(
+            session_id=sess_k_id,
+            turn_number=1,
+            student_message="Переобучение происходит, когда веса подстраиваются под специфический шум выборки, создавая избыточную ко-адаптацию нейронов.",
+            system_reply="Отлично. Ты упомянул ко-адаптацию нейронов. Каким именно математическим механизмом метод Dropout предотвращает эту ко-адаптацию в процессе обратного распространения ошибки?",
+            similarity_score=0.15,
+            is_duplicate=False,
+            typing_duration_ms=18000,
+            paste_detected=False,
+        )
+        save_turn(
+            session_id=sess_k_id,
+            turn_number=2,
+            student_message="Dropout случайным образом обнуляет активации нейронов с вероятностью p во время прямого прохода. Это заставляет каждый нейрон обучаться полезным признакам независимо от соседей, имитируя ансамбль подсетей.",
+            system_reply="Глубокое понимание ансамблевой природы Dropout. А что происходит на экстремальных границах? Например, при слишком высокой вероятности отключения нейронов?",
+            similarity_score=0.22,
+            is_duplicate=False,
+            typing_duration_ms=21000,
+            paste_detected=False,
+        )
+        save_turn(
+            session_id=sess_k_id,
+            turn_number=3,
+            student_message="Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?",
+            system_reply="Блестящий исследовательский вопрос! Отключение 80% нейронов катастрофически снижает эффективную емкость сети (model capacity), вызывая недообучение (underfitting). Баланс между регуляризацией и емкостью — фундаментальный компромисс глубокого обучения.",
+            similarity_score=0.18,
+            is_duplicate=False,
+            typing_duration_ms=25000,
+            paste_detected=False,
+        )
+    except Exception as e:
+        print(f"Warning seeding canonical stud k dialog: {e}")
+
+
 def seed_sqlite_dialogs():
-    """Сохранение канонических сессий Студента К. и Софии Михайловой в SQLite."""
+    """Сохранение канонической сессии Софии Михайловой в SQLite (Студент К. остается чистым по умолчанию)."""
     try:
         from backend.database import save_session, save_turn, get_session
-
-        # Проверяем, есть ли уже сессия stud_k в БД
-        if not get_session("sess_canonical_stud_k"):
-            sess_k_id = "sess_canonical_stud_k"
-            save_session(sess_k_id, "stud_aai_042", "prog_ai_2026", "week_09_deep_learning", "COMPLETED")
-            save_turn(
-                session_id=sess_k_id,
-                turn_number=1,
-                student_message="Переобучение происходит, когда веса подстраиваются под специфический шум выборки, создавая избыточную ко-адаптацию нейронов.",
-                system_reply="Отлично. Ты упомянул ко-адаптацию нейронов. Каким именно математическим механизмом метод Dropout предотвращает эту ко-адаптацию в процессе обратного распространения ошибки?",
-                similarity_score=0.15,
-                is_duplicate=False,
-                typing_duration_ms=18000,
-                paste_detected=False,
-            )
-            save_turn(
-                session_id=sess_k_id,
-                turn_number=2,
-                student_message="Dropout случайным образом обнуляет активации нейронов с вероятностью p во время прямого прохода. Это заставляет каждый нейрон обучаться полезным признакам независимо от соседей, имитируя ансамбль подсетей.",
-                system_reply="Глубокое понимание ансамблевой природы Dropout. А что происходит на экстремальных границах? Например, при слишком высокой вероятности отключения нейронов?",
-                similarity_score=0.22,
-                is_duplicate=False,
-                typing_duration_ms=21000,
-                paste_detected=False,
-            )
-            save_turn(
-                session_id=sess_k_id,
-                turn_number=3,
-                student_message="Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?",
-                system_reply="Блестящий исследовательский вопрос! Отключение 80% нейронов катастрофически снижает эффективную емкость сети (model capacity), вызывая недообучение (underfitting). Баланс между регуляризацией и емкостью — фундаментальный компромисс глубокого обучения.",
-                similarity_score=0.18,
-                is_duplicate=False,
-                typing_duration_ms=25000,
-                paste_detected=False,
-            )
 
         if not get_session("sess_canonical_stud_015"):
             sess_sofia_id = "sess_canonical_stud_015"
