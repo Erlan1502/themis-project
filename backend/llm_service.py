@@ -7,9 +7,10 @@ llm_service.py
 - Детерминированный Demo Mock Fallback (LLM_MODE="mock") для автономной демонстрации всех 10 недель.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncIterator
 import json
 import re
+import asyncio
 import logging
 from openai import AsyncOpenAI
 
@@ -27,7 +28,10 @@ class LLMService:
     def __init__(self):
         self.mode = settings.LLM_MODE
         self.client: Optional[AsyncOpenAI] = None
+        self._client_loop = None
+        self._init_client()
 
+    def _init_client(self):
         # 1. Режим Google Gemini
         if self.mode == "gemini":
             key = settings.GEMINI_API_KEY.strip() if settings.GEMINI_API_KEY else ""
@@ -43,10 +47,10 @@ class LLMService:
                     logger.info(f"Initialized Google Gemini LLM client with model: {self.dialog_model}")
                 except Exception as e:
                     logger.warning(f"Failed to initialize Gemini client: {e}. Falling back to mock mode.")
-                    self.mode = "mock"
+                    self.client = None
             else:
                 logger.info("GEMINI_API_KEY is not set or placeholder. Running in deterministic mock mode.")
-                self.mode = "mock"
+                self.client = None
 
         # 2. Режим локальной Qwen3.5 или стороннего OpenAI-провайдера
         elif self.mode in ("local_qwen", "cloud"):
@@ -60,11 +64,23 @@ class LLMService:
                 self.audit_model = settings.QWEN_AUDIT_MODEL
             except Exception as e:
                 logger.warning(f"Failed to initialize Qwen client: {e}. Falling back to mock.")
-                self.mode = "mock"
+                self.client = None
 
         # 3. Детерминированный mock
         else:
-            self.mode = "mock"
+            self.client = None
+
+    def get_client(self) -> Optional[AsyncOpenAI]:
+        if self.mode == "mock":
+            return None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if self._client_loop != loop or self.client is None:
+            self._init_client()
+            self._client_loop = loop
+        return self.client
 
     async def generate_socratic_reply(
         self,
@@ -74,11 +90,12 @@ class LLMService:
         history: List[Dict[str, str]],
     ) -> str:
         """Генерация сократической реплики (Слой 2)."""
-        if self.mode == "mock" or self.client is None:
+        client = self.get_client()
+        if self.mode == "mock" or client is None:
             return self._mock_socratic_reply(topic_id, turn_number, student_message)
 
         try:
-            grounding_chunks = rag_service.retrieve_chunks(student_message, topic_id)
+            grounding_chunks = await rag_service.retrieve_chunks_async(student_message, topic_id)
             context_str = "\n\n".join([f"[{c['title']}]: {c['content']}" for c in grounding_chunks])
 
             system_prompt = (
@@ -97,7 +114,7 @@ class LLMService:
                 messages.append(h)
             messages.append({"role": "user", "content": student_message})
 
-            resp = await self.client.chat.completions.create(
+            resp = await client.chat.completions.create(
                 model=self.dialog_model,
                 messages=messages,
                 temperature=0.7,
@@ -108,13 +125,69 @@ class LLMService:
             logger.error(f"Error calling live LLM dialog service: {e}. Falling back to mock.")
             return self._mock_socratic_reply(topic_id, turn_number, student_message)
 
+    async def generate_socratic_reply_stream(
+        self,
+        topic_id: str,
+        turn_number: int,
+        student_message: str,
+        history: List[Dict[str, str]],
+    ) -> AsyncIterator[str]:
+        """
+        Потоковая генерация сократической реплики (Слой 2).
+        Поддерживает SSE-стриминг токенов как в реальном режиме (Gemini/OpenAI stream=True),
+        так и в автономном mock-режиме (потоковая выдача детерминированных слов).
+        """
+        client = self.get_client()
+        if self.mode == "mock" or client is None:
+            async for chunk in self._mock_socratic_reply_stream(topic_id, turn_number, student_message):
+                yield chunk
+            return
+
+        try:
+            grounding_chunks = await rag_service.retrieve_chunks_async(student_message, topic_id)
+            context_str = "\n\n".join([f"[{c['title']}]: {c['content']}" for c in grounding_chunks])
+
+            system_prompt = (
+                "Ты — сократический ИИ-тьютор Themis Project для курса 'Программирование для ИИ' (Astana IT University). "
+                "Твоя задача — не давать студенту готовых ответов, а задавать наводящие вопросы, углубляя его понимание "
+                "по таксономии SOLO:\n"
+                "- Шаг 1 -> выявление механизмов и причинных связей (Relational, SOLO 2);\n"
+                "- Шаг 2 -> анализ компромиссов, ограничений и границ применимости (Extended Abstract, SOLO 3);\n"
+                "- Шаг 3 -> стимулирование самостоятельной формулировки гипотезы или обобщения.\n"
+                "Отвечай кратко, доброжелательно и по-делу (до 3-4 предложений).\n"
+                f"КОНТЕКСТ УЧЕБНОЙ НЕДЕЛИ СИЛЛАБУСА:\n{context_str}"
+            )
+
+            messages = [{"role": "system", "content": system_prompt}]
+            for h in history:
+                messages.append(h)
+            messages.append({"role": "user", "content": student_message})
+
+            response_stream = await client.chat.completions.create(
+                model=self.dialog_model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048,
+                stream=True,
+            )
+            async for chunk in response_stream:
+                if chunk.choices and chunk.choices[0].delta:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield delta
+        except Exception as e:
+            logger.error(f"Error calling live LLM dialog stream service: {e}. Falling back to mock stream.")
+            async for chunk in self._mock_socratic_reply_stream(topic_id, turn_number, student_message):
+                yield chunk
+
     async def extract_audit_evidence(
         self,
         topic_id: str,
         dialog_turns: List[Dict[str, str]],
     ) -> AuditExtractionResult:
         """Извлечение доказательств аудита по протоколу Evidence-First (Слой 3A)."""
-        if self.mode == "mock" or self.client is None:
+        client = self.get_client()
+        if self.mode == "mock" or client is None:
             return self._mock_audit_extraction(topic_id, dialog_turns)
 
         try:
@@ -148,7 +221,7 @@ class LLMService:
                 f"ГЛОССАРИЙ ТЕМЫ: {glossary}"
             )
 
-            resp = await self.client.chat.completions.create(
+            resp = await client.chat.completions.create(
                 model=self.audit_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -234,6 +307,20 @@ class LLMService:
                 "Превосходное системное обобщение! Ты связал базовые концепты с архитектурными компромиссами. "
                 "Твой ответ полностью охватывает ключевые аспекты темы и передан на аналитический аудит преподавателю."
             )
+
+    async def _mock_socratic_reply_stream(
+        self,
+        topic_id: str,
+        turn_number: int,
+        student_message: str
+    ) -> AsyncIterator[str]:
+        """Потоковая выдача детерминированного сократического ответа частями."""
+        reply = self._mock_socratic_reply(topic_id, turn_number, student_message)
+        words = reply.split(" ")
+        for i, word in enumerate(words):
+            chunk = word if i == 0 else " " + word
+            yield chunk
+            await asyncio.sleep(0.01)
 
     def _mock_audit_extraction(self, topic_id: str, dialog_turns: List[Dict[str, str]]) -> AuditExtractionResult:
         full_text = " ".join([t.get("student", "") for t in dialog_turns])

@@ -188,7 +188,7 @@ $$\text{Файл курса} \xrightarrow{\text{Parser/LLM}} \text{.md + Гло�
    - Исправить генерацию `recommended_action` в `/api/v1/audit/report/{student_id}` строго по зоне расхождения и теме (полное соблюдение инварианта Zero Downward Penalty).
    - Добавить эндпоинт фиксации решения преподавателя `POST /api/v1/audit/decision` и системный статус `/api/v1/system/health`.
 
-3. **Шаг 3. Ускорение бэкенда: Warmup BGE-M3, ThreadPool и SSE-стриминг (P0):**
+3. **[x] Шаг 3. Ускорение бэкенда: Warmup BGE-M3, ThreadPool и SSE-стриминг (P0):** *(Выполнено)*
    - Добавить прогрев `BAAI/bge-m3` в `lifespan` и обернуть векторные операции в `asyncio.to_thread`.
    - Реализовать `POST /api/v1/dialog/turn/stream` (SSE-стриминг реплик тьютора + передача найденных RAG-источников лекции) и вынести финальный аудит 3-го шага в асинхронную задачу с live-уведомлением дашборда `/api/v1/events/audit-stream`.
 

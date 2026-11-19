@@ -5,14 +5,17 @@ FastAPI веб-приложение Themis Project (v2.0).
 Реализует 5 основных REST эндпоинтов + эндпоинт сброса демо + отдачу SPA интерфейса.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set
 import os
 import uuid
 import shutil
+import asyncio
+import json
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
@@ -66,6 +69,39 @@ from backend.database import (
 )
 from backend.ingestion_service import ingestion_service, UPLOADS_DIR
 from backend.vector_store import vector_store
+
+logger = logging.getLogger("themis.main")
+
+# Система real-time уведомлений преподавателя через SSE
+class AuditBroadcaster:
+    """
+    Менеджер очередей подписчиков Server-Sent Events (SSE) для дашборда преподавателя.
+    Обеспечивает доставку событий аудита в реальном времени и безопасную отписку клиентов.
+    """
+    def __init__(self):
+        self._subscribers: Set[asyncio.Queue] = set()
+
+    def subscribe(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue()
+        self._subscribers.add(q)
+        logger.info(f"Новый клиент подключился к SSE audit-stream (всего подписчиков: {len(self._subscribers)})")
+        return q
+
+    def unsubscribe(self, q: asyncio.Queue):
+        self._subscribers.discard(q)
+        logger.info(f"Клиент отключился от SSE audit-stream (осталось подписчиков: {len(self._subscribers)})")
+
+    async def broadcast(self, message: Dict[str, Any]):
+        dead_queues = []
+        for q in list(self._subscribers):
+            try:
+                await q.put(message)
+            except Exception:
+                dead_queues.append(q)
+        for dq in dead_queues:
+            self._subscribers.discard(dq)
+
+audit_broadcaster = AuditBroadcaster()
 
 # Хранилище сессий и записей в оперативной памяти (для мгновенной демонстрации и IT Fest)
 db_records: Dict[str, StudentAuditRecord] = {}
@@ -208,10 +244,69 @@ def reset_database(load_from_db_if_exists: bool = False):
             }
 
 
+async def run_background_audit(
+    student_id: str,
+    topic_id: str,
+    dialog_turns: List[Dict[str, str]],
+    session_id: Optional[str] = None,
+):
+    """
+    Фоновая асинхронная задача психометрического аудита (Слой 3A и 3B).
+    Запускается на 3-м шаге сократического диалога.
+    Мгновенно освобождает поток студента, выполняет Evidence-First экстракцию,
+    рассчитывает ThemisMathEngine, обновляет статус сессии на COMPLETED,
+    сохраняет аудит в SQLite и рассылает live-событие подписчикам /api/v1/events/audit-stream.
+    """
+    try:
+        rec = db_records.get(student_id)
+        if not rec:
+            return
+
+        extraction = await llm_service.extract_audit_evidence(
+            topic_id=topic_id,
+            dialog_turns=dialog_turns,
+        )
+        rec.extraction = extraction
+        rec.session_status = "COMPLETED"
+        engine.compute_individual_depth(rec)
+        engine.compute_cohort_discrepancy(list(db_records.values()))
+        if session_id and session_id in db_sessions:
+            db_sessions[session_id]["active"] = False
+
+        sync_records_to_sqlite()
+
+        display_name = getattr(rec, "student_name", None) or STUDENT_NAMES_MAP.get(rec.student_id, rec.student_id)
+        record_payload = {
+            "student_id": rec.student_id,
+            "student_name": display_name,
+            "group_id": getattr(rec, "group_id", "group_1"),
+            "in_class_grade": rec.in_class_grade,
+            "ai_depth_score": rec.ai_depth_score,
+            "raw_delta": rec.raw_delta,
+            "rectified_delta": rec.rectified_delta,
+            "z_score": rec.z_score,
+            "zone": rec.zone,
+            "session_status": rec.session_status,
+            "telemetry_clean": rec.telemetry_clean,
+            "teacher_decision": rec.teacher_decision,
+            "has_report": rec.extraction is not None,
+        }
+        await audit_broadcaster.broadcast({
+            "type": "audit_completed",
+            "student_id": rec.student_id,
+            "record": record_payload,
+        })
+        logger.info(f"Фоновый аудит студента {student_id} успешно завершен и отправлен в SSE-стрим.")
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении фонового аудита {student_id}: {e}", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Инициализация при старте с подтягиванием персистентного состояния из SQLite
     reset_database(load_from_db_if_exists=True)
+    # Фоновый прогрев модели BAAI/bge-m3 и векторного хранилища в ThreadPool
+    asyncio.create_task(asyncio.to_thread(vector_store.warmup))
     yield
     # Очистка при завершении
 
@@ -293,12 +388,13 @@ async def upload_course_lecture(
 
     topic_id = f"week_{week_number:02d}_custom"
 
-    # Векторизация и селективная индексация в HNSW граф ChromaDB
-    indexed_count = vector_store.add_slides(
+    # Векторизация и селективная индексация в HNSW граф ChromaDB в отдельном потоке
+    indexed_count = await asyncio.to_thread(
+        vector_store.add_slides,
         topic_id=topic_id,
         week_number=week_number,
         slides_data=slides_data,
-        course_id=course_id
+        course_id=course_id,
     )
 
     # Генерация метаданных и глоссария
@@ -451,7 +547,13 @@ async def get_active_session(
     sess = db_sessions[target_session_id]
     non_dup_turns = [t for t in sess["turns"] if not t.get("is_duplicate")]
     turns_count = len(non_dup_turns)
-    status = "COMPLETED" if turns_count >= settings.TARGET_TURNS else "ACTIVE"
+    rec = db_records.get(student_id)
+    if rec and rec.session_status == "AUDITING":
+        status = "AUDITING"
+    elif turns_count >= settings.TARGET_TURNS:
+        status = "COMPLETED"
+    else:
+        status = "ACTIVE"
 
     return {
         "found": True,
@@ -672,6 +774,26 @@ async def dialog_turn(req: DialogTurnRequest):
         # Слой 3B: Обновляем когортное распределение
         engine.compute_cohort_discrepancy(list(db_records.values()))
         confidence_str = f"HIGH (N = {turn_number}/{settings.TARGET_TURNS})"
+        display_name = getattr(record, "student_name", None) or STUDENT_NAMES_MAP.get(record.student_id, record.student_id)
+        await audit_broadcaster.broadcast({
+            "type": "audit_completed",
+            "student_id": record.student_id,
+            "record": {
+                "student_id": record.student_id,
+                "student_name": display_name,
+                "group_id": getattr(record, "group_id", "group_1"),
+                "in_class_grade": record.in_class_grade,
+                "ai_depth_score": record.ai_depth_score,
+                "raw_delta": record.raw_delta,
+                "rectified_delta": record.rectified_delta,
+                "z_score": record.z_score,
+                "zone": record.zone,
+                "session_status": record.session_status,
+                "telemetry_clean": record.telemetry_clean,
+                "teacher_decision": record.teacher_decision,
+                "has_report": record.extraction is not None,
+            }
+        })
     else:
         record.session_status = "INCOMPLETE_IGNORED"
         confidence_str = f"LOW (N = {turn_number}/{settings.TARGET_TURNS})"
@@ -685,6 +807,282 @@ async def dialog_turn(req: DialogTurnRequest):
         system_reply=system_reply,
         session_confidence=confidence_str,
         is_duplicate=False,
+        session_status=record.session_status,
+    )
+
+
+@app.post("/api/v1/dialog/turn/stream")
+async def dialog_turn_stream(req: DialogTurnRequest, request: Request, background_tasks: BackgroundTasks):
+    """
+    Потоковый эндпоинт сократического диалога (SSE Streaming, P0).
+    Возвращает text/event-stream со следующими типами событий:
+    1. 'sources' - найденные RAG-источники лекции из HNSW-индекса ChromaDB;
+    2. 'delta' - пошаговый стриминг токенов сократического ответа тьютора;
+    3. 'done' - финальный статус шага, статистика и turn_response.
+    
+    На 3-м шаге: переводит сессию в статус 'AUDITING', мгновенно завершает отдачу
+    потока студенту, а тяжелую психометрическую экстракцию Слоя 3A/3B и расчет
+    ThemisMathEngine запускает в фоновой асинхронной задаче, обновляя статус сессии
+    на 'COMPLETED' и рассылая live-событие в дашборд преподавателя.
+    """
+    session = db_sessions.get(req.session_id)
+    if not session:
+        row = get_session(req.session_id)
+        if row:
+            db_turns = get_turns(req.session_id)
+            db_sessions[req.session_id] = {
+                "student_id": row["student_id"],
+                "course_id": row["course_id"],
+                "topic_id": row["topic_id"],
+                "turns": [
+                    {
+                        "turn_number": t["turn_number"],
+                        "student": t["student_message"],
+                        "system": t["system_reply"],
+                        "typing_duration_ms": t["typing_duration_ms"],
+                        "is_duplicate": bool(t["is_duplicate"]),
+                        "similarity_score": t["similarity_score"],
+                    }
+                    for t in db_turns
+                ],
+                "created_at": 0,
+                "active": True,
+            }
+            session = db_sessions[req.session_id]
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    student_id = session["student_id"]
+    record = db_records.get(student_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Student record not found")
+
+    async def event_generator():
+        try:
+            # 1. Проверка на дублирование сообщений (Anti-Spam)
+            previous_msgs = [t["student"] for t in session["turns"] if not t.get("is_duplicate")]
+            is_duplicate, sim_score, matched_msg = similarity_service.check_repetition(req.student_message, previous_msgs)
+
+            if is_duplicate:
+                current_valid_turns = len(previous_msgs)
+                warning_reply = (
+                    f"⚠️ Твое сообщение дублирует уже отправленный ответ (сходство: {int(sim_score * 100)}%). "
+                    "Повторение одной и той же мысли не засчитывается за новый шаг. "
+                    "Попробуй раскрыть механизмы подробнее, привести новый аргумент или ответить на вопрос тьютора."
+                )
+                session["turns"].append({
+                    "turn_number": current_valid_turns,
+                    "student": req.student_message,
+                    "system": warning_reply,
+                    "typing_duration_ms": req.typing_duration_ms,
+                    "is_duplicate": True,
+                    "similarity_score": sim_score,
+                })
+                save_turn(
+                    session_id=req.session_id,
+                    turn_number=current_valid_turns,
+                    student_message=req.student_message,
+                    system_reply=warning_reply,
+                    similarity_score=sim_score,
+                    is_duplicate=True,
+                    typing_duration_ms=req.typing_duration_ms,
+                    paste_detected=req.paste_detected,
+                )
+                yield f"data: {json.dumps({'type': 'sources', 'sources': []}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'delta', 'text': warning_reply}, ensure_ascii=False)}\n\n"
+                turn_response = {
+                    "session_id": req.session_id,
+                    "turn_number": current_valid_turns,
+                    "system_reply": warning_reply,
+                    "session_confidence": f"ПОВТОР (Шаг {current_valid_turns}/{settings.TARGET_TURNS})",
+                    "is_duplicate": True,
+                    "session_status": record.session_status,
+                }
+                yield f"data: {json.dumps({'type': 'done', 'turn_response': turn_response}, ensure_ascii=False)}\n\n"
+                return
+
+            # 2. Валидный новый шаг сократического диалога
+            turn_number = len(previous_msgs) + 1
+            if req.paste_detected:
+                record.telemetry_clean = False
+
+            word_count = len(req.student_message.split())
+            record.total_tokens += max(10, int(word_count * 1.3))
+            record.turns_count = turn_number
+
+            # 3. RAG-поиск источников лекции с оберткой вызова в ThreadPool (asyncio.to_thread)
+            topic_id = session["topic_id"]
+            course_id = session.get("course_id", "prog_ai_2026")
+            sources = []
+            try:
+                raw_slides = await asyncio.to_thread(
+                    vector_store.search_relevant_slides,
+                    query=req.student_message,
+                    topic_id=topic_id,
+                    course_id=course_id,
+                    top_k=3
+                )
+                if raw_slides:
+                    sources = [
+                        {
+                            "slide_number": s.get("metadata", {}).get("slide_number", 1),
+                            "title": s.get("metadata", {}).get("title", "Слайд лекции"),
+                            "similarity": s.get("similarity", 0.0),
+                            "content": s.get("text", "")[:250],
+                        }
+                        for s in raw_slides
+                    ]
+                else:
+                    rag_chunks = rag_service.retrieve_chunks(req.student_message, topic_id, course_id=course_id, top_k=3)
+                    sources = [
+                        {
+                            "slide_number": idx + 1,
+                            "title": c.get("title", "Материал силлабуса"),
+                            "similarity": 0.85,
+                            "content": c.get("content", "")[:250],
+                        }
+                        for idx, c in enumerate(rag_chunks)
+                    ]
+            except Exception as e:
+                logger.warning(f"Ошибка получения RAG источников для стрима: {e}")
+                sources = []
+
+            # Отправка события со списком найденных RAG-источников
+            yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False)}\n\n"
+
+            # 4. Формируем контекстную историю диалога
+            history: List[Dict[str, str]] = []
+            for t in session["turns"]:
+                if not t.get("is_duplicate"):
+                    history.append({"role": "user", "content": t["student"]})
+                    history.append({"role": "assistant", "content": t["system"]})
+
+            # 5. Стриминг токенов реплики тьютора
+            delta_chunks = []
+            async for delta in llm_service.generate_socratic_reply_stream(
+                topic_id=topic_id,
+                turn_number=turn_number,
+                student_message=req.student_message,
+                history=history,
+            ):
+                delta_chunks.append(delta)
+                yield f"data: {json.dumps({'type': 'delta', 'text': delta}, ensure_ascii=False)}\n\n"
+
+            system_reply = "".join(delta_chunks).strip()
+
+            # Сохраняем шаг в сессию и персистентную БД
+            session["turns"].append({
+                "turn_number": turn_number,
+                "student": req.student_message,
+                "system": system_reply,
+                "typing_duration_ms": req.typing_duration_ms,
+                "is_duplicate": False,
+                "similarity_score": sim_score,
+            })
+            save_turn(
+                session_id=req.session_id,
+                turn_number=turn_number,
+                student_message=req.student_message,
+                system_reply=system_reply,
+                similarity_score=sim_score,
+                is_duplicate=False,
+                typing_duration_ms=req.typing_duration_ms,
+                paste_detected=req.paste_detected,
+            )
+
+            # 6. Обработка 3-го шага: статус AUDITING и вынос аудита в фоновую задачу
+            if turn_number >= settings.TARGET_TURNS:
+                record.session_status = "AUDITING"
+                confidence_str = f"AUDITING (Шаг {turn_number}/{settings.TARGET_TURNS})"
+                sync_records_to_sqlite()
+                valid_dialog_turns = [t for t in session["turns"] if not t.get("is_duplicate")]
+                # Запускаем фоновый психометрический расчет (Слой 3A и 3B) через BackgroundTasks
+                background_tasks.add_task(
+                    run_background_audit,
+                    student_id=student_id,
+                    topic_id=topic_id,
+                    dialog_turns=valid_dialog_turns,
+                    session_id=req.session_id,
+                )
+            else:
+                record.session_status = "INCOMPLETE_IGNORED"
+                confidence_str = f"LOW (Шаг {turn_number}/{settings.TARGET_TURNS})"
+                sync_records_to_sqlite()
+
+            turn_response = {
+                "session_id": req.session_id,
+                "turn_number": turn_number,
+                "system_reply": system_reply,
+                "session_confidence": confidence_str,
+                "is_duplicate": False,
+                "session_status": record.session_status,
+            }
+            yield f"data: {json.dumps({'type': 'done', 'turn_response': turn_response}, ensure_ascii=False)}\n\n"
+        except (asyncio.CancelledError, GeneratorExit):
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream; charset=utf-8",
+        background=background_tasks,
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@app.get("/api/v1/events/audit-stream")
+async def audit_events_stream(request: Request):
+    """
+    SSE-эндпоинт уведомлений преподавателя в реальном времени.
+    Клиент (консоль преподавателя или дашборд) подписывается на поток событий аудита.
+    События:
+    - 'connected': подтверждение подключения;
+    - 'audit_completed': завершение расчета аудита для студента с обновленными метриками;
+    - 'ping': периодический heartbeat каждые 15 секунд для поддержания активности соединения.
+    Безопасно отписывает очередь клиента при разрыве соединения.
+    """
+    q = audit_broadcaster.subscribe()
+
+    async def event_generator():
+        try:
+            yield f"data: {json.dumps({'type': 'connected', 'message': 'Audit event stream connected'}, ensure_ascii=False)}\n\n"
+            while True:
+                disconnected = False
+                try:
+                    disconnected = await request.is_disconnected()
+                except Exception:
+                    disconnected = False
+                if disconnected:
+                    break
+
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    try:
+                        disconnected = await request.is_disconnected()
+                    except Exception:
+                        disconnected = False
+                    if disconnected:
+                        break
+                    yield f"data: {json.dumps({'type': 'ping'}, ensure_ascii=False)}\n\n"
+        except (asyncio.CancelledError, GeneratorExit):
+            pass
+        finally:
+            audit_broadcaster.unsubscribe(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
     )
 
 

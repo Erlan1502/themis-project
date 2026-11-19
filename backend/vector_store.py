@@ -32,6 +32,19 @@ class BgeM3EmbeddingFunction(EmbeddingFunction[Documents]):
     def name(self) -> str:
         return "bge_m3_embedding_function"
 
+    def get_config(self) -> Dict[str, Any]:
+        return {"model_name": self.model_name}
+
+    def warmup(self):
+        """Прогревает модель эмбеддингов BGE-M3 в памяти."""
+        try:
+            m = self._get_model()
+            if m is not None:
+                m.encode(["Themis BGE-M3 warmup probe"], normalize_embeddings=True)
+                logger.info("Модель BAAI/bge-m3 успешно прогрета.")
+        except Exception as e:
+            logger.warning(f"Ошибка при прогреве BAAI/bge-m3: {e}")
+
     def _get_model(self):
         if self._model is None:
             try:
@@ -82,6 +95,19 @@ class ThemisVectorStore:
             embedding_function=self.embedding_fn
         )
         logger.info(f"Инициализирована коллекция ChromaDB: themis_lecture_slides (HNSW cosine)")
+
+    def warmup(self):
+        """
+        Прогрев модели эмбеддингов BAAI/bge-m3 и HNSW-индекса в памяти.
+        Вызывается при старте бэкенда для исключения задержек на первом запросе студента.
+        """
+        try:
+            logger.info("Начало прогрева ThemisVectorStore...")
+            self.embedding_fn.warmup()
+            _ = self.collection.count()
+            logger.info("Прогрев ThemisVectorStore успешно завершен.")
+        except Exception as e:
+            logger.warning(f"Ошибка при прогреве ThemisVectorStore: {e}")
 
     def add_slides(
         self,

@@ -114,6 +114,7 @@ class DialogTurnResponse(BaseModel):
     system_reply: str
     session_confidence: str
     is_duplicate: bool = False
+    session_status: Optional[str] = None
 
 
 class GradeSyncItem(BaseModel):

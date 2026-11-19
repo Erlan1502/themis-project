@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional
 import math
 import re
 import json
+import asyncio
 from backend.database import resolve_topic_id, CANONICAL_TOPIC_ID
 
 
@@ -480,6 +481,40 @@ class RAGService:
         if resolved != topic_id:
             self._map[resolved] = week_data
         return week_data
+
+    async def retrieve_chunks_async(
+        self,
+        query: str,
+        topic_id: str,
+        course_id: Optional[str] = None,
+        top_k: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        Асинхронный поиск релевантных фрагментов: выносит вызов vector_store.search_relevant_slides
+        в ThreadPool через asyncio.to_thread, предотвращая блокировку event loop FastAPI.
+        """
+        try:
+            from backend.vector_store import vector_store
+            vector_results = await asyncio.to_thread(
+                vector_store.search_relevant_slides,
+                query=query,
+                topic_id=topic_id,
+                course_id=course_id,
+                top_k=top_k
+            )
+            if vector_results:
+                return [
+                    {
+                        "id": f"slide_{r['metadata'].get('slide_number', 1)}",
+                        "title": r['metadata'].get('title', 'Слайд лекции'),
+                        "content": r['text']
+                    }
+                    for r in vector_results
+                ]
+        except Exception:
+            pass
+
+        return self.retrieve_chunks(query=query, topic_id=topic_id, course_id=course_id, top_k=top_k)
 
     def retrieve_chunks(
         self,

@@ -226,7 +226,7 @@ class ThemisMathEngine:
         alerts_count = {"green": 0, "yellow": 0, "red": 0, "purple": 0}
 
         for r in records:
-            if r.raw_delta is None or r.session_status in ("OPTED_OUT", "INCOMPLETE_IGNORED"):
+            if r.raw_delta is None or r.session_status in ("OPTED_OUT", "INCOMPLETE_IGNORED", "AUDITING"):
                 r.zone = "NO_SIGNAL"
                 r.z_score = 0.0
                 continue
