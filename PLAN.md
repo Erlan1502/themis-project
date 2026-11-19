@@ -183,7 +183,7 @@ $$\text{Файл курса} \xrightarrow{\text{Parser/LLM}} \text{.md + Гло�
    - Исправить баг `len(existing_audits) == 20` в `backend/main.py` и унифицировать ID канонической темы (`week_09_deep_learning` с обратной совместимостью для `topic_05_regularization`).
    - Доиндексировать все 9 существующих `.md`-лекций курса PAI в SQLite и ChromaDB без стирания других курсов.
 
-2. **Шаг 2. Зачистка «Zero-Mock» на бэкенде и честная математика (P0):**
+2. **[x] Шаг 2. Зачистка «Zero-Mock» на бэкенде и честная математика (P0):** *(Выполнено)*
    - Обновить `backend/llm_service.py` и `backend/math_engine.py`: убрать фейковую подстановку `glossary[:3]`, внедрить детерминированную сверку `mastered_concepts` с `lecture_glossary`, убрать `if np.allclose` хардкод свертки.
    - Исправить генерацию `recommended_action` в `/api/v1/audit/report/{student_id}` строго по зоне расхождения и теме (полное соблюдение инварианта Zero Downward Penalty).
    - Добавить эндпоинт фиксации решения преподавателя `POST /api/v1/audit/decision` и системный статус `/api/v1/system/health`.

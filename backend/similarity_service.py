@@ -15,6 +15,70 @@ class SemanticSimilarityService:
     def __init__(self, repetition_threshold: float = 0.55):
         self.repetition_threshold = repetition_threshold
 
+    def normalize_russian_text(self, text: str) -> str:
+        """Нормализация текста (нижний регистр, замена ё->е, очистка пунктуации)."""
+        t = text.lower().replace("ё", "е")
+        t = re.sub(r"[^\w\s-]", " ", t)
+        t = re.sub(r"\s+", " ", t).strip()
+        return t
+
+    RU_EN_TERMS = {
+        "co-adaptation": ["ко-адаптация", "коадаптация", "ко-адаптации", "коадаптации", "coadaptation"],
+        "ко-адаптация": ["co-adaptation", "coadaptation"],
+        "underfitting": ["недообучение", "андерфиттинг", "потеря емкости"],
+        "overfitting": ["переобучение", "оверфиттинг"],
+        "model capacity": ["емкость модели", "емкость сети", "емкость"],
+        "dropout": ["дропаут"],
+        "backpropagation": ["обратное распространение", "бэкпроп"],
+        "activation functions": ["функции активации", "функция активации"],
+    }
+
+    def match_concept(self, concept: str, text: str) -> bool:
+        """
+        Проверяет наличие концепта в тексте с учетом нормализации,
+        стемминга русских/английских флексий, синонимов и подстрок.
+        """
+        c_clean = self.normalize_russian_text(concept)
+        t_clean = self.normalize_russian_text(text)
+        if not c_clean or not t_clean:
+            return False
+
+        # 1. Прямое вхождение подстроки или нормализованного термина
+        if c_clean in t_clean or concept.lower() in text.lower():
+            return True
+
+        # Вариант с дефисом и без ("co-adaptation" vs "coadaptation" / "ко-адаптация" vs "коадаптация")
+        c_no_dash = c_clean.replace("-", "")
+        t_no_dash = t_clean.replace("-", "")
+        if len(c_no_dash) >= 4 and c_no_dash in t_no_dash:
+            return True
+
+        # Проверка двуязычных синонимов (RU <-> EN терминология)
+        c_lower = concept.lower()
+        if c_lower in self.RU_EN_TERMS:
+            for syn in self.RU_EN_TERMS[c_lower]:
+                syn_clean = self.normalize_russian_text(syn)
+                if syn_clean in t_clean or syn in text.lower():
+                    return True
+
+        # 2. Сопоставление по стеммированным токенам
+        c_tokens = self._tokenize(c_clean)
+        if not c_tokens:
+            return False
+
+        t_tokens = set(self._tokenize(t_clean))
+        if all(ct in t_tokens for ct in c_tokens):
+            return True
+
+        # 3. N-граммное / пословное сходство для опечаток и словоформ
+        for word in t_clean.split():
+            if len(word) >= 4 and len(c_clean) >= 4:
+                sim = self.calculate_similarity(c_clean, word)
+                if sim >= 0.75:
+                    return True
+
+        return False
+
     def _stem(self, word: str) -> str:
         """Легковесный стемминг для нормализации русских и английских флексий."""
         w = word.lower().replace("ё", "е")

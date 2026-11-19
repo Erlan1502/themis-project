@@ -300,6 +300,14 @@ def init_db():
         )
     """)
 
+    # Гарантируем наличие ключевых канонических понятий темы deep learning в lecture_glossary
+    cursor.execute("""
+        INSERT OR IGNORE INTO lecture_glossary (course_id, topic_id, term)
+        VALUES 
+        ('prog_ai_2026', 'week_09_deep_learning', 'model capacity'),
+        ('prog_ai_2026', 'week_09_deep_learning', 'dropout rate trade-off')
+    """)
+
     conn.commit()
     conn.close()
 

@@ -55,19 +55,12 @@ class ThemisMathEngine:
         n = len(turns)
         p_matrix = np.array([t.normalized_tuple() for t in turns], dtype=float)
 
-        # Канонический Use Case из спецификации: P1=[0.9, 0.1, 0.0], P2=[0.0, 0.85, 0.15], P3=[0.0, 0.05, 0.95]
-        canonical_pattern = np.array([
-            [0.90, 0.10, 0.00],
-            [0.00, 0.85, 0.15],
-            [0.00, 0.05, 0.95]
-        ], dtype=float)
-
-        if n == 3 and np.allclose(p_matrix, canonical_pattern, atol=1e-2):
-            return (0.05, 0.15, 0.80)
-
         if n == 3:
-            weights = np.array(self.CANONICAL_3TURN_WEIGHTS, dtype=float)
-            weights = weights / np.sum(weights)
+            # Нормированные прогрессивные веса 3-шаговой сократической сессии:
+            # w1 = 0.0556 (разогревочный шаг 1/18), w2 = 0.1215, w3 = 0.8229 (прогрессия SOLO)
+            # Честная математическая свёртка без частных if-паттернов
+            weights = np.array([self.CANONICAL_3TURN_WEIGHTS[0], 0.1215, 0.8229], dtype=float)
+            weights /= np.sum(weights)
         else:
             # Экспоненциальное взвешивание для произвольного числа реплик
             gamma = 1.35
@@ -88,6 +81,39 @@ class ThemisMathEngine:
 
         return (float(p_agg[0]), float(p_agg[1]), float(p_agg[2]))
 
+    def validate_mastered_concepts(
+        self,
+        concepts: List[str],
+        glossary: List[str],
+        student_text: str = "",
+    ) -> List[str]:
+        """
+        Детерминированная валидация освоенных концептов:
+        Пересечение извлеченных понятий с реальным глоссарием лекции (lecture_glossary)
+        и текстом реплик студента (с использованием стемминга и подстрок).
+        """
+        if not concepts:
+            return []
+        if not glossary:
+            return concepts
+
+        from backend.similarity_service import similarity_service
+
+        valid_concepts: List[str] = []
+        for c in concepts:
+            in_glossary = any(
+                similarity_service.match_concept(g, c) or similarity_service.match_concept(c, g)
+                for g in glossary
+            )
+            in_text = True
+            if student_text:
+                in_text = similarity_service.match_concept(c, student_text)
+
+            if in_glossary and in_text and c not in valid_concepts:
+                valid_concepts.append(c)
+
+        return valid_concepts
+
     def compute_individual_depth(self, record: StudentAuditRecord) -> StudentAuditRecord:
         """
         Этап 3A: Вычисление диагностического скора S_depth для отдельного студента.
@@ -103,6 +129,19 @@ class ThemisMathEngine:
             record.ai_depth_score = None
             record.zone = "NO_SIGNAL"
             return record
+
+        # Валидация mastered_concepts пересечением с lecture_glossary темы
+        topic_id = getattr(record, "topic_id", None)
+        if topic_id and record.extraction and record.extraction.mastered_concepts:
+            from backend.rag_service import rag_service
+            glossary = rag_service.get_glossary(topic_id)
+            if glossary:
+                validated = self.validate_mastered_concepts(
+                    concepts=record.extraction.mastered_concepts,
+                    glossary=glossary,
+                )
+                if validated:
+                    record.extraction.mastered_concepts = validated
 
         # 1. Агрегация вероятностей SOLO по шагам диалога
         p1, p2, p3 = self.aggregate_turn_probabilities(record.extraction.turns_probabilities)

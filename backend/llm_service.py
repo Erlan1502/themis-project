@@ -167,7 +167,27 @@ class LLMService:
                 content = re.sub(r"^```(?:json)?\s*", "", content)
                 content = re.sub(r"\s*```$", "", content)
             data = json.loads(content)
-            return AuditExtractionResult.model_validate(data)
+            result = AuditExtractionResult.model_validate(data)
+
+            # Детерминированная валидация по глоссарию темы и тексту реплик студента
+            from backend.similarity_service import similarity_service
+            full_student_text = " ".join([t.get("student", "") for t in dialog_turns])
+
+            verified_concepts = []
+            for c in result.mastered_concepts:
+                is_in_glossary = any(
+                    similarity_service.match_concept(g, c) or similarity_service.match_concept(c, g)
+                    for g in glossary
+                )
+                if is_in_glossary and similarity_service.match_concept(c, full_student_text):
+                    verified_concepts.append(c)
+
+            for g in glossary:
+                if g not in verified_concepts and similarity_service.match_concept(g, full_student_text):
+                    verified_concepts.append(g)
+
+            result.mastered_concepts = verified_concepts[:6]
+            return result
         except Exception as e:
             logger.error(f"Error calling live LLM audit extraction: {e}. Falling back to mock.")
             return self._mock_audit_extraction(topic_id, dialog_turns)
@@ -244,19 +264,28 @@ class LLMService:
                 ],
             )
 
-        # Адаптивный mock для других недель силлабуса
+        # Адаптивное детерминированное извлечение для других недель силлабуса:
+        # Извлекаем ТОЛЬКО термины, реально упомянутые студентом. Никакой фейковой подстановки glossary[:3]!
         glossary = rag_service.get_glossary(topic_id)
         quotes = [t.get("student", "") for t in dialog_turns if t.get("student")]
-        found_concepts = [c for c in glossary if c in full_text.lower()][:4]
-        if not found_concepts and glossary:
-            found_concepts = glossary[:3]
+        from backend.similarity_service import similarity_service
+        found_concepts = [
+            c for c in glossary
+            if similarity_service.match_concept(c, full_text)
+        ][:6]
+
+        has_substance = len(found_concepts) > 0 or len(full_text.split()) >= 15
 
         return AuditExtractionResult(
-            on_topic=True,
+            on_topic=has_substance,
             student_quotes=quotes,
             mastered_concepts=found_concepts,
-            socratic_initiative=len(dialog_turns) >= 3,
-            pedagogical_justification=f"Студент продемонстрировал уверенное понимание концептов темы ({topic_id}).",
+            socratic_initiative=len(dialog_turns) >= 3 and len(found_concepts) >= 2,
+            pedagogical_justification=(
+                f"Студент продемонстрировал владение понятиями темы ({topic_id}): {', '.join(found_concepts)}."
+                if found_concepts
+                else f"Студент завершил сессию по теме ({topic_id}), специфические термины глоссария не зафиксированы."
+            ),
             turns_probabilities=[
                 TurnSOLOProbabilities(turn_number=1, p1=0.75, p2=0.25, p3=0.00),
                 TurnSOLOProbabilities(turn_number=2, p1=0.10, p2=0.70, p3=0.20),

@@ -29,6 +29,10 @@ from backend.models_schemas import (
     ReportSOLOAnalysis,
     ReportEvidence,
     StudentAuditRecord,
+    TeacherDecisionRequest,
+    TeacherDecisionResponse,
+    SystemHealthResponse,
+    VectorStoreHealth,
 )
 from backend.math_engine import ThemisMathEngine
 from backend.seed_data import (
@@ -147,6 +151,8 @@ def reset_database(load_from_db_if_exists: bool = False):
         conn = get_connection()
         c = conn.cursor()
         c.execute("DELETE FROM student_audits")
+        c.execute("DELETE FROM syllabus_weeks WHERE week_number > 10 OR topic_id LIKE '%custom%'")
+        c.execute("DELETE FROM lecture_glossary WHERE topic_id LIKE '%custom%'")
         conn.commit()
         conn.close()
 
@@ -847,10 +853,36 @@ async def get_student_report(
         pedagogical_justification=ext.pedagogical_justification,
     )
 
-    recommended_action = (
-        "Рекомендуется задать 1 контрольный устный блиц-вопрос по емкости модели на следующем "
-        f"занятии для подтверждения пересмотра очной оценки (ориентир потенциала: {int(rec.ai_depth_score or 90)})."
-    )
+    topic_data = rag_service.get_topic_data(resolved_topic)
+    topic_title = topic_data.get("title", resolved_topic) if topic_data else resolved_topic
+    concepts_list = ext.mastered_concepts if ext and ext.mastered_concepts else []
+    concepts_str = ", ".join(concepts_list[:4]) if concepts_list else "ключевых концептов темы"
+    rectified_grade = int(round(rec.ai_depth_score or rec.in_class_grade or 90))
+    delta_str = f"+{rec.rectified_delta}"
+
+    if rec.zone == "NORMAL" or rec.rectified_delta <= 0:
+        recommended_action = "Согласие каналов: очная оценка полностью отражает уровень знаний, вмешательство не требуется."
+    elif rec.zone == "HIGH_DISCREPANCY":
+        # PURPLE зона: значимый нераскрытый потенциал / академическая аномалия
+        recommended_action = (
+            f"Рекомендуется ректификация оценки до {rectified_grade} баллов (Δ = {delta_str}, Z = +{rec.z_score}σ) "
+            f"на основе демонстрации понятий: {concepts_str}."
+        )
+    elif rec.zone == "AUDIT_TRIGGER":
+        # RED зона: сильное расхождение, триггер аудита
+        recommended_action = (
+            f"Рекомендуется 2-минутный устный блиц-вопрос по теме '{topic_title}' (понятия: {concepts_str}) "
+            f"для подтверждения пересмотра очной оценки с потенциалом до {rectified_grade} баллов (Δ = {delta_str})."
+        )
+    elif rec.zone == "WATCHLIST":
+        # YELLOW зона: умеренное расхождение
+        recommended_action = (
+            f"Умеренное расхождение каналов (Δ = {delta_str}). Рекомендуется контрольный устный вопрос по теме '{topic_title}' "
+            f"для подтверждения освоения понятий: {concepts_str} (диагностический ориентир: {rectified_grade} баллов)."
+        )
+    else:
+        # NO_SIGNAL или прочие
+        recommended_action = "Сессия не завершена или студент не участвовал в диалоге. Очная оценка преподавателя остается без изменений."
 
     return AIReportResponse(
         student_id=rec.student_id,
@@ -866,6 +898,161 @@ async def get_student_report(
         solo_analysis=solo_analysis,
         evidence=evidence,
         recommended_action=recommended_action,
+    )
+
+
+@app.post("/api/v1/audit/decision", response_model=TeacherDecisionResponse)
+async def submit_teacher_decision(req: TeacherDecisionRequest):
+    """
+    Фиксация решения преподавателя по результатам психометрического аудита (Human-in-the-Loop).
+    Действия:
+    - ACCEPT_RECTIFICATION: утверждение ректификации с обновлением очной оценки in_class_grade.
+      Строго соблюдается инвариант Zero Downward Penalty: new_grade не может быть ниже текущей оценки.
+    - REJECT: отклонение ректификации, сохранение очной оценки без изменений.
+    - ORAL_BLITZ: назначение 2-минутного контрольного блиц-опроса по теме.
+    - KEEP_CURRENT: подтверждение текущей оценки преподавателя.
+    """
+    resolved_topic = resolve_topic_id(req.topic_id)
+
+    # 1. Поиск записи студента
+    target_rec = None
+    for r in db_records.values():
+        if (
+            r.student_id == req.student_id
+            and getattr(r, "course_id", "prog_ai_2026") == req.course_id
+            and resolve_topic_id(getattr(r, "topic_id", CANONICAL_TOPIC_ID)) == resolved_topic
+        ):
+            target_rec = r
+            break
+    if not target_rec:
+        target_rec = db_records.get(req.student_id)
+
+    if not target_rec:
+        raise HTTPException(status_code=404, detail=f"Студент {req.student_id} не найден в когорте.")
+
+    previous_grade = float(target_rec.in_class_grade) if target_rec.in_class_grade is not None else 70.0
+
+    # 2. Строгий инвариант Zero Downward Penalty: запрет занижения оценки
+    if req.new_grade is not None and req.new_grade < previous_grade:
+        raise HTTPException(
+            status_code=400,
+            detail="Themis policy violation: grade cannot be revised downward"
+        )
+
+    # 3. Валидация действия
+    valid_actions = {"ACCEPT_RECTIFICATION", "REJECT", "ORAL_BLITZ", "KEEP_CURRENT"}
+    if req.action not in valid_actions:
+        raise HTTPException(status_code=400, detail=f"Недопустимое действие: {req.action}. Допустимы: {valid_actions}")
+
+    updated_grade = previous_grade
+
+    if req.action == "ACCEPT_RECTIFICATION":
+        if req.new_grade is not None:
+            updated_grade = float(req.new_grade)
+        elif target_rec.ai_depth_score is not None:
+            updated_grade = float(round(target_rec.ai_depth_score, 1))
+        else:
+            updated_grade = previous_grade
+
+        if updated_grade < previous_grade:
+            raise HTTPException(
+                status_code=400,
+                detail="Themis policy violation: grade cannot be revised downward"
+            )
+
+        target_rec.in_class_grade = updated_grade
+        # Пересчитываем дельты для студента
+        if target_rec.ai_depth_score is not None:
+            target_rec.raw_delta = round(target_rec.ai_depth_score - updated_grade, 1)
+            target_rec.rectified_delta = round(max(0.0, target_rec.raw_delta), 1)
+
+        comment_part = f" ({req.comment})" if req.comment else ""
+        decision_str = f"ACCEPT_RECTIFICATION: {previous_grade} -> {updated_grade}{comment_part}"
+        target_rec.teacher_decision = decision_str
+        message = f"Ректификация принята. Оценка студента {req.student_id} обновлена: {previous_grade} -> {updated_grade}."
+
+        # Реактивный пересчет когортного распределения (Этап 3B)
+        engine.compute_cohort_discrepancy(list(db_records.values()))
+
+    elif req.action == "REJECT":
+        comment_part = f" ({req.comment})" if req.comment else ""
+        target_rec.teacher_decision = f"REJECT: rectification rejected{comment_part}"
+        message = f"Ректификация отклонена. Оценка {previous_grade} сохранена без изменений."
+
+    elif req.action == "ORAL_BLITZ":
+        comment_part = f" ({req.comment})" if req.comment else ""
+        target_rec.teacher_decision = f"ORAL_BLITZ: scheduled 2-min oral verification{comment_part}"
+        message = f"Назначен 2-минутный устный блиц-опрос для студента {req.student_id}."
+
+    elif req.action == "KEEP_CURRENT":
+        comment_part = f" ({req.comment})" if req.comment else ""
+        target_rec.teacher_decision = f"KEEP_CURRENT: grade confirmed{comment_part}"
+        message = f"Очная оценка {previous_grade} подтверждена без изменений."
+
+    # Персистентное сохранение в SQLite
+    sync_records_to_sqlite()
+
+    return TeacherDecisionResponse(
+        status="SUCCESS",
+        student_id=req.student_id,
+        course_id=req.course_id,
+        topic_id=resolved_topic,
+        action=req.action,
+        previous_grade=previous_grade,
+        updated_grade=updated_grade,
+        teacher_decision=target_rec.teacher_decision or req.action,
+        message=message,
+        record={
+            "student_id": target_rec.student_id,
+            "in_class_grade": target_rec.in_class_grade,
+            "ai_depth_score": target_rec.ai_depth_score,
+            "rectified_delta": target_rec.rectified_delta,
+            "z_score": target_rec.z_score,
+            "zone": target_rec.zone,
+            "teacher_decision": target_rec.teacher_decision,
+        }
+    )
+
+
+@app.get("/api/v1/system/health", response_model=SystemHealthResponse)
+async def system_health():
+    """
+    Системный мониторинг состояния Themis Project:
+    - Проверка подключения к персистентной БД SQLite
+    - Текущий режим языковой модели (LLM_MODE)
+    - Проверка состояния коллекции ChromaDB и модели эмбеддингов BAAI/bge-m3
+    """
+    # 1. Проверка базы данных SQLite
+    db_status = "connected"
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT 1")
+        conn.close()
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    # 2. Проверка векторного хранилища ChromaDB
+    v_status = "ready"
+    collection_count = 0
+    try:
+        if vector_store.collection:
+            collection_count = vector_store.collection.count()
+        else:
+            v_status = "not_initialized"
+    except Exception as e:
+        v_status = f"error: {str(e)}"
+
+    return SystemHealthResponse(
+        status="OK" if db_status == "connected" and "error" not in v_status else "DEGRADED",
+        database=db_status,
+        llm_mode=settings.LLM_MODE,
+        vector_store=VectorStoreHealth(
+            status=v_status,
+            collection_count=collection_count,
+            dimension=1024,
+            model="BAAI/bge-m3",
+        ),
     )
 
 

@@ -104,3 +104,13 @@ def test_upload_course_api_endpoint(sample_pptx):
     assert week_11 is not None
     assert "CatBoost" in week_11["topic_name"]
 
+    # Очистка динамически созданной тестовой недели 11 для чистоты тестовой среды
+    from backend.database import get_connection
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM syllabus_weeks WHERE week_number = 11")
+    c.execute("DELETE FROM lecture_glossary WHERE topic_id LIKE '%11%' OR topic_id LIKE '%custom%'")
+    conn.commit()
+    conn.close()
+    rag_service.reload()
+

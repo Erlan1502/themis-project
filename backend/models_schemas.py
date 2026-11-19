@@ -181,3 +181,40 @@ class AIReportResponse(BaseModel):
     evidence: ReportEvidence
     recommended_action: str
 
+
+class TeacherDecisionRequest(BaseModel):
+    student_id: str
+    course_id: str = "prog_ai_2026"
+    topic_id: str = "week_09_deep_learning"
+    action: str  # "ACCEPT_RECTIFICATION", "REJECT", "ORAL_BLITZ", "KEEP_CURRENT"
+    new_grade: Optional[float] = None
+    comment: Optional[str] = None
+
+
+class TeacherDecisionResponse(BaseModel):
+    status: str = "SUCCESS"
+    student_id: str
+    course_id: str
+    topic_id: str
+    action: str
+    previous_grade: float
+    updated_grade: float
+    teacher_decision: str
+    message: str
+    record: Optional[Dict[str, Any]] = None
+
+
+class VectorStoreHealth(BaseModel):
+    status: str
+    collection_count: int
+    dimension: int
+    model: str
+
+
+class SystemHealthResponse(BaseModel):
+    status: str
+    database: str
+    llm_mode: str
+    vector_store: VectorStoreHealth
+
+
