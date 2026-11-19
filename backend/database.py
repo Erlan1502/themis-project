@@ -496,6 +496,45 @@ def get_student_identity(student_id: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def get_student_identity_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
+    """Получить профиль студента по telegram_id."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM student_identities WHERE telegram_id = ?", (telegram_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def link_telegram_identity(
+    student_id: str,
+    telegram_id: int,
+    telegram_username: Optional[str] = None
+) -> bool:
+    """Привязать telegram_id к существующему профилю student_id."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE student_identities 
+        SET telegram_id = ?, telegram_username = ? 
+        WHERE student_id = ?
+    """, (telegram_id, telegram_username, student_id))
+    rows_affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return rows_affected > 0
+
+
+def get_all_student_identities() -> List[Dict[str, Any]]:
+    """Получить всех зарегистрированных студентов."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM student_identities ORDER BY student_id ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def save_student_identity(
     student_id: str,
     display_name: str,

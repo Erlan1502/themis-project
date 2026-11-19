@@ -200,7 +200,7 @@ $$\text{Файл курса} \xrightarrow{\text{Parser/LLM}} \text{.md + Гло�
    - Создать `backend/markdown_converter.py` (поддержка `.pdf`, `.pptx`, `.docx`, `.ipynb`, `.md`, `.zip` → чистый `.md` с таблицами, кодом и формулами) + `backend/chunker.py`.
    - Реализовать авто-структурирование курса/глоссария и фоновую индексацию BGE-M3 → HNSW с живым прогресс-баром в UI по `/api/v1/course/jobs/{job_id}`.
 
-6. **Шаг 6. Telegram Mini App (`TMA`) для студентов (P1):**
+6. **[x] Шаг 6. Telegram Mini App (`TMA`) для студентов (P1):** *(Выполнено)*
    - Реализовать криптографическую валидацию `Telegram.WebApp.initData` (`backend/tma_auth.py`), привязку `telegram_id` ↔ `student_id` и легковесный обработчик `/start` бота (`backend/telegram_bot.py`).
    - Создать мобильный интерфейс `frontend/tma.html` (адаптация под клавиатуру, таймер, 3-шаговый степпер, `enableClosingConfirmation`, `HapticFeedback`, кнопка добровольного отказа) и модалку с QR-кодом входа в Консоли преподавателя.
 

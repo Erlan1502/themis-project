@@ -36,6 +36,8 @@ from backend.models_schemas import (
     TeacherDecisionResponse,
     SystemHealthResponse,
     VectorStoreHealth,
+    TmaLinkRequest,
+    TmaMeResponse,
 )
 from backend.math_engine import ThemisMathEngine
 from backend.seed_data import (
@@ -69,11 +71,21 @@ from backend.database import (
     save_ingestion_job,
     get_ingestion_job,
     update_ingestion_job,
+    get_student_identity,
+    get_student_identity_by_telegram_id,
+    link_telegram_identity,
+    save_student_identity,
 )
 from backend.markdown_converter import markdown_converter
 from backend.chunker import smart_chunk_markdown
 from backend.ingestion_service import ingestion_service, UPLOADS_DIR
 from backend.vector_store import vector_store
+from backend.tma_auth import (
+    parse_and_validate_init_data,
+    resolve_student_context,
+    get_or_create_telegram_student,
+)
+from backend.telegram_bot import telegram_bot
 
 logger = logging.getLogger("themis.main")
 
@@ -619,13 +631,17 @@ async def get_students_list(group_id: Optional[str] = Query(None)):
 @app.get("/api/v1/session/active/{student_id}")
 async def get_active_session(
     student_id: str,
+    request: Request,
     topic_id: str = Query("week_09_deep_learning"),
     course_id: str = Query("prog_ai_2026")
 ):
     """
     Эндпоинт восстановления сессии студента из оперативной памяти или SQLite.
     Позволяет бесшовно восстанавливать историю диалога при F5 или смене студента в UI.
+    Поддерживает псевдоним 'me' для автоматического разрешения через Telegram initData.
     """
+    if student_id == "me":
+        student_id = await resolve_student_context(request)
     resolved_topic = resolve_topic_id(topic_id)
     target_session_id = None
     # 1. Поиск в памяти
@@ -700,11 +716,20 @@ async def get_active_session(
 
 
 @app.post("/api/v1/session/start", response_model=SessionStartResponse)
-async def start_session(req: SessionStartRequest):
+async def start_session(req: SessionStartRequest, request: Request):
     """
     Эндпоинт 1: Инициализация добровольной сократической сессии («Цифровой пандус»).
     Проверяет доступность окна расписания и возвращает контекстный стартовый вопрос.
     """
+    # Если передан TMA заголовок или student_id == "me", разрешаем контекст через Telegram Mini App
+    auth_hdr = request.headers.get("Authorization", "").lower()
+    tma_hdr = request.headers.get("X-Telegram-Init-Data", "")
+    if req.student_id in ("me", "tma", "") or auth_hdr.startswith("tma ") or tma_hdr:
+        try:
+            req.student_id = await resolve_student_context(request)
+        except Exception:
+            pass
+
     resolved_topic = resolve_topic_id(req.topic_id)
     initial_prompt = rag_service.get_initial_prompt(resolved_topic)
 
@@ -730,12 +755,18 @@ async def start_session(req: SessionStartRequest):
 
     # Регистрируем студента в реестре, если его еще нет
     if req.student_id not in db_records:
+        identity = get_student_identity(req.student_id)
+        init_grade = identity.get("default_grade", 75.0) if identity else 70.0
+        disp_name = (identity.get("display_name") if identity else None) or STUDENT_NAMES_MAP.get(req.student_id, req.student_id)
+        grp_id = (identity.get("group_id") if identity else None) or "group_1"
+
         db_records[req.student_id] = StudentAuditRecord(
             student_id=req.student_id,
             course_id=req.course_id,
             topic_id=resolved_topic,
-            student_name=STUDENT_NAMES_MAP.get(req.student_id, req.student_id),
-            in_class_grade=70.0,
+            student_name=disp_name,
+            group_id=grp_id,
+            in_class_grade=init_grade,
             session_status="INCOMPLETE_IGNORED",
             turns_count=0,
             total_tokens=0,
@@ -1712,6 +1743,161 @@ async def demo_reset():
     """
     reset_database(load_from_db_if_exists=False)
     return {"status": "SUCCESS", "message": "Demo data reset to canonical 20-student cohort."}
+
+
+# =====================================================================
+# TELEGRAM MINI APP (TMA) & WEBHOOK ЭНДПОИНТЫ
+# =====================================================================
+
+tma_frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "tma.html")
+
+@app.get("/tma", response_class=HTMLResponse)
+async def serve_tma():
+    """Раздача интерфейса мобильного Telegram Mini App (TMA)."""
+    if os.path.exists(tma_frontend_path):
+        with open(tma_frontend_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse("<h1>Telegram Mini App frontend not found.</h1>", status_code=404)
+
+
+@app.get("/api/v1/tma/me")
+async def get_tma_current_user(request: Request):
+    """
+    Эндпоинт получения контекста текущего пользователя в Telegram Mini App.
+    Авторизует по initData (Authorization: tma ... или X-Telegram-Init-Data).
+    Возвращает student_id, display_name, group_id, in_class_grade, session_status, ai_depth_score, rectified_delta.
+    """
+    student_id = await resolve_student_context(request)
+    identity = get_student_identity(student_id)
+    rec = db_records.get(student_id)
+    audit = None if rec else get_student_audit(student_id)
+
+    display_name = (identity.get("display_name") if identity else None) or (rec.student_name if rec else None) or STUDENT_NAMES_MAP.get(student_id, student_id)
+    group_id = (identity.get("group_id") if identity else None) or (getattr(rec, "group_id", "group_1") if rec else "group_1")
+    default_grade = identity.get("default_grade", 75.0) if identity else 75.0
+    in_class_grade = rec.in_class_grade if rec and rec.in_class_grade is not None else (audit["in_class_grade"] if audit else default_grade)
+    session_status = rec.session_status if rec else (audit["session_status"] if audit else "OPTED_OUT")
+    ai_depth_score = rec.ai_depth_score if rec else (audit["ai_depth_score"] if audit else None)
+    rectified_delta = rec.rectified_delta if rec else (audit["rectified_delta"] if audit else 0.0)
+    zone = rec.zone if rec else (audit["zone"] if audit else "NO_SIGNAL")
+
+    return {
+        "student_id": student_id,
+        "display_name": display_name,
+        "group_id": group_id,
+        "in_class_grade": in_class_grade,
+        "telegram_id": identity.get("telegram_id") if identity else None,
+        "session_status": session_status,
+        "ai_depth_score": ai_depth_score,
+        "rectified_delta": rectified_delta,
+        "zone": zone,
+    }
+
+
+@app.post("/api/v1/tma/link")
+async def link_tma_student(req: TmaLinkRequest):
+    """
+    Связка существующего student_id (например stud_aai_042) с telegram_id по коду привязки.
+    """
+    if not req.student_id or not req.telegram_id:
+        raise HTTPException(status_code=400, detail="student_id and telegram_id are required")
+
+    success = link_telegram_identity(
+        student_id=req.student_id,
+        telegram_id=req.telegram_id,
+        telegram_username=req.telegram_username
+    )
+    if not success:
+        # Если студент еще не в student_identities, создаем запись
+        identity = get_student_identity(req.student_id)
+        if not identity:
+            rec = db_records.get(req.student_id)
+            display_name = getattr(rec, "student_name", None) or STUDENT_NAMES_MAP.get(req.student_id, req.student_id)
+            save_student_identity(
+                student_id=req.student_id,
+                display_name=display_name,
+                telegram_id=req.telegram_id,
+                telegram_username=req.telegram_username,
+                group_id=getattr(rec, "group_id", "group_1") if rec else "group_1",
+                default_grade=rec.in_class_grade if rec else 75.0
+            )
+            success = True
+
+    return {
+        "status": "SUCCESS",
+        "message": f"Студент {req.student_id} успешно привязан к Telegram ID {req.telegram_id}",
+        "student_id": req.student_id,
+        "telegram_id": req.telegram_id
+    }
+
+
+@app.post("/api/v1/tma/webhook")
+async def tma_webhook(update: Dict[str, Any]):
+    """
+    Прием и обработка webhook обновлений от Telegram Bot API (команды /start, /help, callbacks).
+    """
+    result = await telegram_bot.handle_update(update)
+    return {"ok": True, "result": result}
+
+
+@app.post("/api/v1/session/opt-out")
+async def session_opt_out(request: Request, payload: Optional[Dict[str, Any]] = None):
+    """
+    Добровольный выход студента из сократической сессии («Принцип Цифрового пандуса» UDL).
+    Сессия завершается без отправки ответов на психометрический расчет,
+    очная оценка G_prof сохраняется в 100% объеме без штрафов (Zero Downward Penalty).
+    """
+    data = payload or {}
+    student_id = data.get("student_id")
+    session_id = data.get("session_id")
+
+    if not student_id:
+        try:
+            student_id = await resolve_student_context(request)
+        except Exception:
+            student_id = "stud_aai_042"
+
+    # Удаляем активные сессии
+    sessions_to_close = []
+    for s_id, s_data in db_sessions.items():
+        if s_data.get("student_id") == student_id or (session_id and s_id == session_id):
+            sessions_to_close.append(s_id)
+            s_data["active"] = False
+
+    for s_id in sessions_to_close:
+        if s_id in db_sessions:
+            del db_sessions[s_id]
+
+    delete_student_dialogs(student_id)
+
+    # Сбрасываем статус записи в db_records
+    rec = db_records.get(student_id)
+    if rec:
+        rec.session_status = "OPTED_OUT"
+        rec.turns_count = 0
+        rec.ai_depth_score = None
+        rec.raw_delta = 0.0
+        rec.rectified_delta = 0.0
+        rec.z_score = 0.0
+        rec.zone = "NO_SIGNAL"
+        rec.extraction = None
+        engine.compute_cohort_discrepancy(list(db_records.values()))
+        sync_records_to_sqlite()
+        grade = rec.in_class_grade
+    else:
+        identity = get_student_identity(student_id)
+        grade = identity.get("default_grade", 75.0) if identity else 75.0
+        reset_student_in_db(student_id, default_in_class_grade=grade)
+
+    return {
+        "status": "OPTED_OUT",
+        "message": f"Сессия добровольно завершена. Ваша очная оценка ({grade}) полностью сохранена.",
+        "student_id": student_id,
+        "in_class_grade": grade,
+        "ai_depth_score": None,
+        "rectified_delta": 0.0,
+        "zone": "NO_SIGNAL"
+    }
 
 
 # =====================================================================

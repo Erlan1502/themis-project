@@ -99,6 +99,10 @@
 
       <!-- Actions -->
       <div class="flex items-center space-x-2">
+        <button onclick="openTmaQrModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
+          <span>📱</span>
+          <span>Telegram Mini App</span>
+        </button>
         <button onclick="resetDemoData()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center space-x-1.5">
           <span>🔄</span>
           <span>Сбросить демо</span>
@@ -616,6 +620,70 @@
         <button id="btn-submit-upload" onclick="submitLectureUpload()" class="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/30 transition flex items-center space-x-1.5">
           <span>⚡</span>
           <span>Загрузить и проиндексировать в HNSW</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- MODAL: TELEGRAM MINI APP QR-CODE & DEEP LINK (ШАГ 6) -->
+  <!-- =================================================================== -->
+  <div id="modal-tma-qr" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-indigo-500/30 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow text-lg">
+            📱
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Telegram Mini App</h3>
+            <p class="text-xs text-indigo-300">Вход для студентов и жюри хакатона</p>
+          </div>
+        </div>
+        <button onclick="closeTmaQrModal()" class="text-slate-400 hover:text-white text-xl font-mono leading-none">&times;</button>
+      </div>
+
+      <!-- QR Code Container -->
+      <div class="flex flex-col items-center justify-center p-5 bg-slate-950/90 rounded-2xl border border-slate-800/80 space-y-3">
+        <div class="p-3 bg-white rounded-2xl shadow-xl flex items-center justify-center">
+          <img id="tma-qr-img" src="" alt="TMA QR Code" class="w-48 h-48 block rounded-lg" />
+        </div>
+        <div class="text-center space-y-1">
+          <div class="text-xs font-semibold text-slate-200">Наведите камеру смартфона на QR-код</div>
+          <div class="text-[11px] text-slate-400">Автоматический переход в Telegram Mini App бота</div>
+        </div>
+      </div>
+
+      <!-- Deep Link Box -->
+      <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2">
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-400 font-mono">Прямая ссылка:</span>
+          <button onclick="copyTmaLink()" id="btn-copy-tma-link" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center space-x-1 cursor-pointer">
+            <span>📋</span>
+            <span>Скопировать</span>
+          </button>
+        </div>
+        <input type="text" id="tma-direct-url" readonly class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-indigo-300 font-mono select-all focus:outline-none" />
+      </div>
+
+      <!-- Live Demo Explainer -->
+      <div class="bg-indigo-950/30 border border-indigo-500/20 rounded-xl p-3 text-xs text-slate-300 space-y-1.5 leading-relaxed">
+        <div class="font-bold text-indigo-300 flex items-center space-x-1.5">
+          <span>✨</span>
+          <span>Zero-Friction Live Demo на защите:</span>
+        </div>
+        <p class="text-[11px] text-slate-400">
+          Члены жюри и студенты открывают Mini App с телефона. Система создает персонального студента с их именем из Telegram — после прохождения 3 шагов диалога их точка мгновенно появится на графике и дашборде преподавателя в реальном времени!
+        </p>
+      </div>
+
+      <div class="flex items-center space-x-2 pt-1">
+        <button onclick="openTmaInNewTab()" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow flex items-center justify-center space-x-1.5 cursor-pointer">
+          <span>🚀</span>
+          <span>Открыть Mini App в браузере</span>
+        </button>
+        <button onclick="closeTmaQrModal()" class="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition cursor-pointer">
+          Закрыть
         </button>
       </div>
     </div>
@@ -2430,6 +2498,53 @@
         submitBtn.disabled = false;
         submitBtn.innerHTML = '<span>⚡</span><span>Попробовать снова</span>';
       }
+    }
+
+    // =================================================================
+    // TELEGRAM MINI APP (TMA) MODAL FUNCTIONS (ШАГ 6)
+    // =================================================================
+    function openTmaQrModal() {
+      const modal = document.getElementById('modal-tma-qr');
+      if (!modal) return;
+      const currentWeek = activeTopicId || 'week_09_deep_learning';
+      const botUsername = 'ThemisExamBot';
+      const directUrl = `https://t.me/${botUsername}?start=pai_${currentWeek}`;
+
+      const input = document.getElementById('tma-direct-url');
+      if (input) input.value = directUrl;
+
+      const qrImg = document.getElementById('tma-qr-img');
+      if (qrImg) {
+        const encoded = encodeURIComponent(directUrl);
+        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encoded}&bgcolor=ffffff&color=1e1b4b&margin=8`;
+      }
+      modal.classList.remove('hidden');
+    }
+
+    function closeTmaQrModal() {
+      document.getElementById('modal-tma-qr')?.classList.add('hidden');
+    }
+
+    function copyTmaLink() {
+      const input = document.getElementById('tma-direct-url');
+      if (input) {
+        input.select();
+        navigator.clipboard.writeText(input.value).then(() => {
+          showToast('Ссылка скопирована', 'Прямая ссылка на TMA скопирована в буфер', 'indigo');
+          const btn = document.getElementById('btn-copy-tma-link');
+          if (btn) btn.innerHTML = '<span>✓</span><span>Скопировано!</span>';
+          setTimeout(() => {
+            if (btn) btn.innerHTML = '<span>📋</span><span>Скопировать</span>';
+          }, 2000);
+        }).catch(() => {
+          showToast('Ошибка', 'Не удалось скопировать ссылку', 'amber');
+        });
+      }
+    }
+
+    function openTmaInNewTab() {
+      const currentWeek = activeTopicId || 'week_09_deep_learning';
+      window.open(`/tma?topic=${currentWeek}`, '_blank');
     }
 
     function escapeHtml(str) {

@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Themis Project — Цифровой пандус (TMA)</title>
+
+  <!-- Telegram WebApp JS SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#312e81',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --app-height: 100dvh;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--tg-theme-bg-color, #090d16);
+      color: var(--tg-theme-text-color, #f1f5f9);
+      height: var(--app-height);
+      overflow: hidden;
+    }
+    .chat-bubble-tutor {
+      background: linear-gradient(135deg, rgba(30, 27, 75, 0.95), rgba(15, 23, 42, 0.95));
+      border: 1px solid rgba(99, 102, 241, 0.25);
+    }
+    .chat-bubble-student {
+      background: linear-gradient(135deg, #4f46e5, #4338ca);
+      box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+    }
+    .typing-dot {
+      animation: typingBounce 1.4s infinite ease-in-out both;
+    }
+    .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+    .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes typingBounce {
+      0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background-color: rgba(99, 102, 241, 0.3);
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="flex flex-col antialiased">
+
+  <!-- =================================================================== -->
+  <!-- 1. COMPACT MOBILE TOP BAR -->
+  <!-- =================================================================== -->
+  <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-3 pt-2 pb-2.5 shrink-0 z-30">
+    <div class="flex items-center justify-between gap-2">
+      <!-- Left: Student badge & UDL guarantee -->
+      <div class="flex items-center space-x-2 min-w-0">
+        <div id="user-avatar" class="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow">
+          К
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center space-x-1.5">
+            <span id="user-display-name" class="text-xs font-bold text-slate-100 truncate block">Студент</span>
+            <span class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono font-semibold">TMA</span>
+          </div>
+          <div class="text-[10px] text-slate-400 flex items-center space-x-1">
+            <span>🛡️ Очная: <strong id="user-in-class-grade" class="text-indigo-300">75.0</strong></span>
+            <span class="text-slate-600">•</span>
+            <span class="text-emerald-400">Zero Penalty</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Topic pill & Timer -->
+      <div class="flex items-center space-x-1.5 shrink-0">
+        <div class="bg-slate-800/80 border border-slate-700/60 px-2 py-1 rounded-lg flex items-center space-x-1 text-[11px] font-mono text-amber-300 shadow-sm">
+          <span>⏱</span>
+          <span id="tma-timer">45:00</span>
+        </div>
+        <button onclick="openOptOutModal()" title="Добровольный выход" class="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700/60 transition text-xs">
+          🏳️
+        </button>
+      </div>
+    </div>
+
+    <!-- 3-Step Socratic Stepper -->
+    <div class="mt-2.5 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
+      <div class="flex items-center space-x-1.5">
+        <span class="text-slate-400 font-medium">Прогресс:</span>
+        <span id="step-label" class="text-indigo-400 font-bold">Шаг 1 из 3</span>
+      </div>
+      <!-- 3 dots -->
+      <div class="flex items-center space-x-2">
+        <div id="dot-step-1" class="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-indigo-600/30 border border-indigo-500 text-indigo-300 font-semibold text-[10px]">
+          <span>●</span> <span>Явление</span>
+        </div>
+        <div id="dot-step-2" class="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-500 font-semibold text-[10px]">
+          <span>○</span> <span>Механизмы</span>
+        </div>
+        <div id="dot-step-3" class="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-500 font-semibold text-[10px]">
+          <span>○</span> <span>Синтез</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =================================================================== -->
+  <!-- 2. COLLAPSIBLE LECTURE GLOSSARY HINTS -->
+  <!-- =================================================================== -->
+  <div class="bg-slate-900/40 border-b border-slate-800/80 px-3 py-1.5 text-xs shrink-0">
+    <div class="flex items-center justify-between">
+      <button onclick="toggleGlossary()" class="flex items-center space-x-1.5 text-slate-300 hover:text-indigo-300 font-medium">
+        <span>📚</span>
+        <span>Глоссарий темы: <strong id="active-topic-title" class="text-indigo-400">Регуляризация Dropout</strong></span>
+        <span id="glossary-arrow" class="text-slate-500 text-[10px] ml-1">▼</span>
+      </button>
+      <span class="text-[10px] text-slate-500 font-mono">нажмите для вставки</span>
+    </div>
+    <div id="glossary-chips" class="hidden mt-2 pt-2 border-t border-slate-800/60 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scroll pb-1">
+      <!-- Chips will be inserted here -->
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- 3. CHAT MESSAGE AREA -->
+  <!-- =================================================================== -->
+  <main id="chat-messages" class="flex-1 overflow-y-auto px-3 py-3 space-y-3 custom-scroll">
+    <!-- Initial Tutor Welcome Card -->
+    <div class="chat-bubble-tutor rounded-2xl p-3.5 shadow-md">
+      <div class="flex items-center space-x-2 mb-2">
+        <div class="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-xs">🎓</div>
+        <span class="text-xs font-bold text-indigo-300">Сократический тьютор Themis</span>
+        <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.2 rounded font-mono">RAG BGE-M3</span>
+      </div>
+      <p id="initial-prompt-text" class="text-sm leading-relaxed text-slate-200">
+        Загрузка стартового вопроса лекции...
+      </p>
+      <div id="initial-rag-source" class="mt-2.5 pt-2 border-t border-indigo-500/20 text-[11px] text-slate-400 flex items-center space-x-1.5">
+        <span>📖</span>
+        <span class="font-medium text-indigo-300/90">Опора на конспект: Раздел «Регуляризация нейросетей»</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- =================================================================== -->
+  <!-- 4. STREAMING INDICATOR SKELETON -->
+  <!-- =================================================================== -->
+  <div id="streaming-skeleton" class="hidden px-4 py-2 shrink-0">
+    <div class="chat-bubble-tutor rounded-2xl p-3 max-w-[90%] shadow flex items-center space-x-2">
+      <div class="w-5 h-5 rounded-md bg-indigo-600/60 flex items-center justify-center text-[10px]">✨</div>
+      <div class="flex items-center space-x-1.5">
+        <div class="w-2 h-2 rounded-full bg-indigo-400 typing-dot"></div>
+        <div class="w-2 h-2 rounded-full bg-indigo-400 typing-dot"></div>
+        <div class="w-2 h-2 rounded-full bg-indigo-400 typing-dot"></div>
+      </div>
+      <span class="text-xs text-indigo-300/80 font-medium ml-1">Тьютор сверяется с конспектом...</span>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- 5. BOTTOM INPUT DOCK (MOBILE KEYBOARD SAFE) -->
+  <!-- =================================================================== -->
+  <footer id="input-footer" class="bg-slate-900/95 backdrop-blur-md border-t border-slate-800 p-2.5 shrink-0 z-30 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+    <form id="chat-form" onsubmit="handleSendTurn(event)" class="space-y-1.5">
+      <div class="flex items-end space-x-2">
+        <div class="flex-1 bg-slate-950/80 border border-slate-700/80 focus-within:border-indigo-500 rounded-xl px-3 py-2 transition shadow-inner">
+          <textarea
+            id="message-input"
+            rows="1"
+            placeholder="Опишите ваше рассуждение..."
+            class="w-full bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none max-h-28 custom-scroll"
+            oninput="autoResizeTextarea(this)"
+            onkeydown="handleTextareaKeyDown(event)"
+          ></textarea>
+        </div>
+        <button
+          id="btn-send"
+          type="submit"
+          class="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold flex items-center justify-center transition shadow-lg shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <svg class="w-5 h-5 translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between text-[10px] text-slate-500 px-1">
+        <span id="char-hint">💡 Минимум 10 символов для анализа</span>
+        <span>Enter для отправки</span>
+      </div>
+    </form>
+  </footer>
+
+  <!-- =================================================================== -->
+  <!-- 6. MODALS: OPT-OUT & COMPLETION -->
+  <!-- =================================================================== -->
+  <!-- Opt-Out Modal -->
+  <div id="modal-opt-out" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-4 shadow-2xl space-y-3">
+      <div class="flex items-center space-x-2 text-amber-400 font-bold text-sm">
+        <span>🛡️</span>
+        <span>Добровольное завершение сессии</span>
+      </div>
+      <p class="text-xs text-slate-300 leading-relaxed">
+        Вы можете завершить сессию в любой момент.
+        По регламенту <b>Themis Project («Цифровой пандус»)</b> ваша очная оценка 
+        <strong id="opt-out-grade" class="text-indigo-300">75.0</strong> полностью неприкосновенна (Zero Downward Penalty).
+      </p>
+      <div class="flex items-center space-x-2 pt-2">
+        <button onclick="closeOptOutModal()" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition">
+          Продолжить диалог
+        </button>
+        <button onclick="confirmOptOut()" class="flex-1 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl transition shadow">
+          Завершить
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Completion Screen Modal -->
+  <div id="modal-completed" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+    <div class="bg-gradient-to-b from-slate-900 to-indigo-950 border border-indigo-500/30 rounded-3xl max-w-sm w-full p-5 shadow-2xl text-center space-y-4">
+      <div class="w-16 h-16 rounded-2xl bg-indigo-600/30 border border-indigo-500/50 text-3xl flex items-center justify-center mx-auto shadow-inner animate-bounce">
+        🎉
+      </div>
+      <div>
+        <h3 class="text-lg font-extrabold text-white">Рефлексия завершена!</h3>
+        <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+          Все 3 сократических шага успешно пройдены. Ваши рассуждения зафиксированы и переданы в Консоль преподавателя.
+        </p>
+      </div>
+
+      <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3 text-left space-y-1.5 text-xs font-mono">
+        <div class="flex justify-between">
+          <span class="text-slate-400">Очная оценка G_prof:</span>
+          <span id="final-in-class-grade" class="text-slate-200 font-bold">75.0</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Статус ректификации:</span>
+          <span class="text-emerald-400 font-bold">На рассмотрении</span>
+        </div>
+        <div class="text-[10px] text-slate-400 mt-1 pt-1 border-t border-slate-800">
+          🛡 Защита: итоговый балл не может быть ниже <span id="final-guaranteed-grade">75.0</span>
+        </div>
+      </div>
+
+      <button onclick="closeTmaApp()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow-lg">
+        Вернуться в Telegram
+      </button>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- 7. CLIENT LOGIC & TELEGRAM INTEGRATION -->
+  <!-- =================================================================== -->
+  <script>
+    // Инициализация Telegram WebApp API
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      try {
+        tg.enableClosingConfirmation();
+      } catch (e) {
+        console.debug("enableClosingConfirmation not supported:", e);
+      }
+    }
+
+    // Состояние сессии
+    let currentSessionId = null;
+    let currentStudentId = null;
+    let currentInClassGrade = 75.0;
+    let currentTurnNumber = 0;
+    let isSending = false;
+    let activeTopicId = "week_09_deep_learning";
+    let activeCourseId = "prog_ai_2026";
+    let turnTypingStartTime = Date.now();
+    let timerSeconds = 45 * 60;
+    let timerInterval = null;
+
+    // Глоссарий по умолчанию
+    const DEFAULT_GLOSSARY = [
+      "ко-адаптация весов",
+      "dropout rate",
+      "емкость модели",
+      "underfitting",
+      "ансамбль нейросетей",
+      "обратное распространение",
+      "регуляризация весов",
+      "генерализация",
+      "переобучение (overfitting)"
+    ];
+
+    // Тактильный отклик Telegram HapticFeedback
+    function haptic(type) {
+      try {
+        if (!tg?.HapticFeedback) return;
+        if (type === 'success' || type === 'warning' || type === 'error') {
+          tg.HapticFeedback.notificationOccurred(type);
+        } else if (type === 'light' || type === 'medium' || type === 'heavy') {
+          tg.HapticFeedback.impactOccurred(type);
+        }
+      } catch (e) {
+        console.debug("Haptic feedback error:", e);
+      }
+    }
+
+    // Слушатель высоты viewport для мобильных клавиатур
+    function setupViewportAdaptation() {
+      const setHeight = () => {
+        const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        document.documentElement.style.setProperty('--app-height', `${height}px`);
+        scrollToBottom();
+      };
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', setHeight);
+        window.visualViewport.addEventListener('scroll', setHeight);
+      }
+      window.addEventListener('resize', setHeight);
+      setHeight();
+    }
+
+    // Прокрутка чата вниз
+    function scrollToBottom() {
+      const chat = document.getElementById('chat-messages');
+      if (chat) {
+        setTimeout(() => {
+          chat.scrollTop = chat.scrollHeight;
+        }, 50);
+      }
+    }
+
+    // Авто-высота textarea
+    function autoResizeTextarea(textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 110) + 'px';
+      const len = textarea.value.trim().length;
+      const hint = document.getElementById('char-hint');
+      if (hint) {
+        hint.textContent = len < 10 
+          ? `💡 Набрано ${len}/10 символов` 
+          : `✓ ${len} символов (достаточно)`;
+        hint.className = len < 10 
+          ? 'text-slate-500' 
+          : 'text-emerald-400 font-semibold';
+      }
+    }
+
+    function handleTextareaKeyDown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('chat-form').dispatchEvent(new Event('submit', { cancelable: true }));
+      }
+    }
+
+    // Переключение аккордеона глоссария
+    function toggleGlossary() {
+      const chips = document.getElementById('glossary-chips');
+      const arrow = document.getElementById('glossary-arrow');
+      if (chips.classList.contains('hidden')) {
+        chips.classList.remove('hidden');
+        arrow.textContent = '▲';
+      } else {
+        chips.classList.add('hidden');
+        arrow.textContent = '▼';
+      }
+    }
+
+    function renderGlossaryChips(terms) {
+      const container = document.getElementById('glossary-chips');
+      if (!container) return;
+      container.innerHTML = '';
+      const list = (terms && terms.length) ? terms : DEFAULT_GLOSSARY;
+      list.forEach(t => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'px-2 py-0.5 rounded-md bg-slate-800 hover:bg-indigo-900/60 text-slate-300 hover:text-indigo-200 border border-slate-700 text-[11px] font-mono transition';
+        chip.textContent = t;
+        chip.onclick = () => {
+          haptic('light');
+          const input = document.getElementById('message-input');
+          if (input) {
+            const cur = input.value.trim();
+            input.value = cur ? `${cur} ${t}` : t;
+            autoResizeTextarea(input);
+            input.focus();
+          }
+        };
+        container.appendChild(chip);
+      });
+    }
+
+    // Таймер окна доступа
+    function startTimer(seconds) {
+      if (timerInterval) clearInterval(timerInterval);
+      timerSeconds = seconds || (45 * 60);
+      const timerDisplay = document.getElementById('tma-timer');
+
+      const update = () => {
+        if (timerSeconds <= 0) {
+          clearInterval(timerInterval);
+          if (timerDisplay) timerDisplay.textContent = "00:00";
+          return;
+        }
+        timerSeconds--;
+        const mins = Math.floor(timerSeconds / 60);
+        const secs = timerSeconds % 60;
+        if (timerDisplay) {
+          timerDisplay.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+      };
+      update();
+      timerInterval = setInterval(update, 1000);
+    }
+
+    // Обновление степпера
+    function updateStepper(turnNumber) {
+      currentTurnNumber = turnNumber;
+      const stepLabel = document.getElementById('step-label');
+      const dot1 = document.getElementById('dot-step-1');
+      const dot2 = document.getElementById('dot-step-2');
+      const dot3 = document.getElementById('dot-step-3');
+
+      const step = Math.min(turnNumber + 1, 3);
+      if (stepLabel) {
+        stepLabel.textContent = turnNumber >= 3 ? "Завершено (3 из 3)" : `Шаг ${step} из 3`;
+      }
+
+      const activeCls = "flex items-center space-x-1 px-2 py-0.5 rounded-full bg-indigo-600/30 border border-indigo-500 text-indigo-300 font-semibold text-[10px]";
+      const doneCls = "flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-600/20 border border-emerald-500/50 text-emerald-300 font-semibold text-[10px]";
+      const waitCls = "flex items-center space-x-1 px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-500 font-semibold text-[10px]";
+
+      if (turnNumber === 0) {
+        dot1.className = activeCls; dot1.innerHTML = "<span>●</span> <span>Явление</span>";
+        dot2.className = waitCls;   dot2.innerHTML = "<span>○</span> <span>Механизмы</span>";
+        dot3.className = waitCls;   dot3.innerHTML = "<span>○</span> <span>Синтез</span>";
+      } else if (turnNumber === 1) {
+        dot1.className = doneCls;   dot1.innerHTML = "<span>✓</span> <span>Явление</span>";
+        dot2.className = activeCls; dot2.innerHTML = "<span>●</span> <span>Механизмы</span>";
+        dot3.className = waitCls;   dot3.innerHTML = "<span>○</span> <span>Синтез</span>";
+      } else if (turnNumber === 2) {
+        dot1.className = doneCls;   dot1.innerHTML = "<span>✓</span> <span>Явление</span>";
+        dot2.className = doneCls;   dot2.innerHTML = "<span>✓</span> <span>Механизмы</span>";
+        dot3.className = activeCls; dot3.innerHTML = "<span>●</span> <span>Синтез</span>";
+      } else {
+        dot1.className = doneCls;   dot1.innerHTML = "<span>✓</span> <span>Явление</span>";
+        dot2.className = doneCls;   dot2.innerHTML = "<span>✓</span> <span>Механизмы</span>";
+        dot3.className = doneCls;   dot3.innerHTML = "<span>✓</span> <span>Синтез</span>";
+      }
+    }
+
+    // Добавление реплики в чат
+    function appendMessage(role, text, meta = {}) {
+      const container = document.getElementById('chat-messages');
+      if (!container) return;
+
+      const msgDiv = document.createElement('div');
+
+      if (role === 'student') {
+        msgDiv.className = "flex justify-end";
+        msgDiv.innerHTML = `
+          <div class="chat-bubble-student text-white rounded-2xl rounded-tr-sm p-3 max-w-[85%] text-sm leading-relaxed shadow">
+            <div>${escapeHtml(text)}</div>
+            <div class="text-[10px] text-indigo-200/80 text-right mt-1 font-mono">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+          </div>
+        `;
+      } else {
+        msgDiv.className = "flex justify-start";
+        const ragSource = meta.source ? `
+          <div class="mt-2 pt-1.5 border-t border-indigo-500/20 text-[10px] text-indigo-300/80 flex items-center space-x-1">
+            <span>📖</span>
+            <span>Опора: ${escapeHtml(meta.source)}</span>
+          </div>
+        ` : '';
+
+        msgDiv.innerHTML = `
+          <div class="chat-bubble-tutor rounded-2xl rounded-tl-sm p-3.5 max-w-[88%] text-sm leading-relaxed text-slate-200 shadow">
+            <div class="flex items-center space-x-1.5 mb-1.5 text-xs font-bold text-indigo-300">
+              <span class="w-5 h-5 rounded bg-indigo-600 flex items-center justify-center text-[10px]">🎓</span>
+              <span>Сократический тьютор</span>
+            </div>
+            <div class="tutor-text whitespace-pre-wrap">${escapeHtml(text)}</div>
+            ${ragSource}
+          </div>
+        `;
+      }
+
+      container.appendChild(msgDiv);
+      scrollToBottom();
+      return msgDiv;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // Инициализация контекста пользователя и старт/восстановление сессии
+    async function initTmaApp() {
+      setupViewportAdaptation();
+      renderGlossaryChips(DEFAULT_GLOSSARY);
+
+      const rawInitData = tg?.initData || "";
+      const headers = { "Content-Type": "application/json" };
+      if (rawInitData) {
+        headers["Authorization"] = `tma ${rawInitData}`;
+        headers["X-Telegram-Init-Data"] = rawInitData;
+      }
+
+      // Извлекаем topic из query параметров (deep link)
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlTopic = urlParams.get('topic');
+      if (urlTopic) activeTopicId = urlTopic;
+
+      try {
+        // 1. Получаем профиль студента через TMA me
+        const meResp = await fetch('/api/v1/tma/me', { headers });
+        if (meResp.ok) {
+          const meData = await meResp.json();
+          currentStudentId = meData.student_id;
+          currentInClassGrade = meData.in_class_grade || 75.0;
+
+          document.getElementById('user-display-name').textContent = meData.display_name || currentStudentId;
+          document.getElementById('user-in-class-grade').textContent = currentInClassGrade.toFixed(1);
+          document.getElementById('opt-out-grade').textContent = currentInClassGrade.toFixed(1);
+          document.getElementById('final-in-class-grade').textContent = currentInClassGrade.toFixed(1);
+          document.getElementById('final-guaranteed-grade').textContent = currentInClassGrade.toFixed(1);
+
+          const initialChar = (meData.display_name || "К").trim().charAt(0).toUpperCase();
+          document.getElementById('user-avatar').textContent = initialChar;
+        } else {
+          currentStudentId = "stud_aai_042";
+        }
+
+        // 2. Проверяем активную сессию
+        const activeResp = await fetch(`/api/v1/session/active/${currentStudentId}?topic_id=${activeTopicId}&course_id=${activeCourseId}`, { headers });
+        const activeData = await activeResp.json();
+
+        if (activeData.found && activeData.session_id) {
+          currentSessionId = activeData.session_id;
+          document.getElementById('initial-prompt-text').textContent = activeData.initial_prompt || "Продолжение диалога.";
+
+          // Восстанавливаем сохраненные реплики
+          if (activeData.turns && activeData.turns.length) {
+            activeData.turns.forEach(t => {
+              if (t.student) appendMessage('student', t.student);
+              if (t.system) appendMessage('tutor', t.system);
+            });
+            updateStepper(activeData.turns_count || activeData.turns.length);
+          }
+
+          if (activeData.status === 'COMPLETED' || activeData.turns_count >= 3) {
+            showCompletionModal();
+          }
+        } else {
+          // 3. Запускаем новую сессию
+          const startResp = await fetch('/api/v1/session/start', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              student_id: currentStudentId,
+              course_id: activeCourseId,
+              topic_id: activeTopicId,
+              force_open: true
+            })
+          });
+          const startData = await startResp.json();
+          currentSessionId = startData.session_id;
+          document.getElementById('initial-prompt-text').textContent = startData.initial_prompt || "Опишите своими словами, почему возникает переобучение?";
+          startTimer(startData.time_remaining_seconds || (45 * 60));
+          updateStepper(0);
+        }
+
+      } catch (err) {
+        console.error("Initialization error:", err);
+        document.getElementById('initial-prompt-text').textContent = "Добро пожаловать в Themis Project. Опишите своими словами понимание механизма регуляризации Dropout.";
+        updateStepper(0);
+      }
+
+      turnTypingStartTime = Date.now();
+      startTimer(45 * 60);
+    }
+
+    // Отправка реплики студента через потоковый SSE эндпоинт
+    async function handleSendTurn(e) {
+      e.preventDefault();
+      if (isSending) return;
+
+      const input = document.getElementById('message-input');
+      const text = (input?.value || '').trim();
+      if (!text) return;
+
+      if (text.length < 10) {
+        haptic('warning');
+        alert("Пожалуйста, раскройте мысль подробнее (минимум 10 символов) для качественного анализа.");
+        return;
+      }
+
+      const typingDurationMs = Math.max(1500, Date.now() - turnTypingStartTime);
+      isSending = true;
+      haptic('light');
+
+      // Добавляем реплику студента в UI
+      appendMessage('student', text);
+      input.value = '';
+      autoResizeTextarea(input);
+
+      // Показываем скелетон ожидания
+      const skeleton = document.getElementById('streaming-skeleton');
+      if (skeleton) skeleton.classList.remove('hidden');
+      scrollToBottom();
+
+      const rawInitData = tg?.initData || "";
+      const headers = { "Content-Type": "application/json" };
+      if (rawInitData) {
+        headers["Authorization"] = `tma ${rawInitData}`;
+        headers["X-Telegram-Init-Data"] = rawInitData;
+      }
+
+      try {
+        const response = await fetch('/api/v1/dialog/turn/stream', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            student_message: text,
+            typing_duration_ms: typingDurationMs,
+            paste_detected: false
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server returned status ${response.status}`);
+        }
+
+        if (skeleton) skeleton.classList.add('hidden');
+
+        // Создаем контейнер для потокового ответа тьютора
+        const tutorBubble = appendMessage('tutor', '');
+        const textContainer = tutorBubble.querySelector('.tutor-text');
+        let fullReply = '';
+        let sourcesMeta = [];
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // Оставляем незавершенный кусок
+
+          for (const line of lines) {
+            const cleanLine = line.trim();
+            if (cleanLine.startsWith('data:')) {
+              const jsonStr = cleanLine.substring(5).trim();
+              if (jsonStr) {
+                try {
+                  const ev = JSON.parse(jsonStr);
+                  if (ev.type === 'sources') {
+                    sourcesMeta = ev.sources || [];
+                  } else if (ev.type === 'delta') {
+                    fullReply += ev.text || '';
+                    if (textContainer) textContainer.textContent = fullReply;
+                    scrollToBottom();
+                  } else if (ev.type === 'done') {
+                    const turnRes = ev.turn_response;
+                    if (turnRes) {
+                      if (turnRes.is_duplicate) {
+                        haptic('warning');
+                      } else {
+                        haptic('success');
+                        updateStepper(turnRes.turn_number);
+                        if (turnRes.turn_number >= 3 || turnRes.session_status === 'COMPLETED' || turnRes.session_status === 'AUDITING') {
+                          setTimeout(showCompletionModal, 1200);
+                        }
+                      }
+                    }
+                  }
+                } catch (pe) {
+                  console.debug("SSE JSON parse error:", pe);
+                }
+              }
+            }
+          }
+        }
+
+      } catch (err) {
+        console.error("Turn stream error:", err);
+        if (skeleton) skeleton.classList.add('hidden');
+        appendMessage('tutor', 'Произошла сетевая задержка. Ваши слова зафиксированы. Пожалуйста, продолжайте рассуждение.');
+        haptic('warning');
+      } finally {
+        isSending = false;
+        turnTypingStartTime = Date.now();
+      }
+    }
+
+    // Модалка добровольного выхода
+    function openOptOutModal() {
+      haptic('light');
+      document.getElementById('modal-opt-out')?.classList.remove('hidden');
+    }
+
+    function closeOptOutModal() {
+      document.getElementById('modal-opt-out')?.classList.add('hidden');
+    }
+
+    async function confirmOptOut() {
+      closeOptOutModal();
+      haptic('medium');
+
+      const rawInitData = tg?.initData || "";
+      const headers = { "Content-Type": "application/json" };
+      if (rawInitData) {
+        headers["Authorization"] = `tma ${rawInitData}`;
+        headers["X-Telegram-Init-Data"] = rawInitData;
+      }
+
+      try {
+        await fetch('/api/v1/session/opt-out', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            student_id: currentStudentId,
+            session_id: currentSessionId
+          })
+        });
+      } catch (e) {
+        console.debug("Opt-out request error:", e);
+      }
+
+      appendMessage('tutor', `Сессия добровольно завершена. Ваша очная оценка (${currentInClassGrade.toFixed(1)}) полностью неприкосновенна. Спасибо за участие!`);
+      const input = document.getElementById('message-input');
+      const btn = document.getElementById('btn-send');
+      if (input) input.disabled = true;
+      if (btn) btn.disabled = true;
+    }
+
+    // Модалка успешного завершения
+    function showCompletionModal() {
+      haptic('success');
+      document.getElementById('modal-completed')?.classList.remove('hidden');
+    }
+
+    function closeTmaApp() {
+      if (tg) {
+        tg.close();
+      } else {
+        document.getElementById('modal-completed')?.classList.add('hidden');
+      }
+    }
+
+    // Запуск приложения
+    document.addEventListener('DOMContentLoaded', initTmaApp);
+  </script>
+</body>
+</html>

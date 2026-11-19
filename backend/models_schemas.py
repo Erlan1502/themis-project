@@ -219,3 +219,21 @@ class SystemHealthResponse(BaseModel):
     vector_store: VectorStoreHealth
 
 
+class TmaLinkRequest(BaseModel):
+    student_id: str
+    telegram_id: int
+    telegram_username: Optional[str] = None
+    link_code: Optional[str] = None
+
+
+class TmaMeResponse(BaseModel):
+    student_id: str
+    display_name: str
+    group_id: str = "group_1"
+    in_class_grade: float
+    telegram_id: Optional[int] = None
+    session_status: str = "OPTED_OUT"
+    ai_depth_score: Optional[float] = None
+    rectified_delta: float = 0.0
+
+

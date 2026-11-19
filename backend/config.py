@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     QWEN_DIALOG_MODEL: str = "Qwen/Qwen3.5-4B"
     QWEN_AUDIT_MODEL: str = "Qwen/Qwen3.5-27B"
 
+    # Telegram Bot & TMA settings (Шаг 6)
+    TELEGRAM_BOT_TOKEN: str = "dev"
+    TELEGRAM_BOT_USERNAME: str = "ThemisExamBot"
+    PUBLIC_URL: str = "http://localhost:8000"
+
     # Параметры ThemisMathEngine
     TARGET_TURNS: int = 3
     DENSITY_ALPHA: float = 3.5
