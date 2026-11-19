@@ -12,6 +12,8 @@ rag_service.py
 from typing import List, Dict, Any, Optional
 import math
 import re
+import json
+from backend.database import resolve_topic_id, CANONICAL_TOPIC_ID
 
 
 SYLLABUS_WEEKS: List[Dict[str, Any]] = [
@@ -341,7 +343,11 @@ class RAGService:
     """Сервис поиска и извлечения контекста силлабуса PAI 2026 для сократического бота."""
 
     def __init__(self):
-        self._weeks = list(SYLLABUS_WEEKS)
+        self.reload()
+
+    def reload(self):
+        """Перезагрузка базового силлабуса и данных из SQLite."""
+        self._weeks = [dict(w) for w in SYLLABUS_WEEKS]
         self._map = dict(WEEKS_BY_ID)
         self.load_from_db()
 
@@ -357,15 +363,26 @@ class RAGService:
                 return
 
             cursor.execute("""
-                SELECT week_number, topic_id, title, topic_name, initial_prompt, chunks_count
+                SELECT course_id, week_number, topic_id, title, topic_name, initial_prompt, demo_turns_json, chunks_count
                 FROM syllabus_weeks
                 ORDER BY week_number ASC
             """)
             rows = cursor.fetchall()
             for row in rows:
                 topic_id = row["topic_id"]
-                cursor.execute("SELECT term FROM lecture_glossary WHERE topic_id = ?", (topic_id,))
+                course_id = row["course_id"] if "course_id" in row.keys() else "prog_ai_2026"
+                cursor.execute("""
+                    SELECT term FROM lecture_glossary 
+                    WHERE topic_id = ? OR topic_id = ?
+                """, (topic_id, resolve_topic_id(topic_id)))
                 glossary = [g["term"] for g in cursor.fetchall()]
+
+                demo_turns = None
+                if "demo_turns_json" in row.keys() and row["demo_turns_json"]:
+                    try:
+                        demo_turns = json.loads(row["demo_turns_json"])
+                    except Exception:
+                        demo_turns = None
 
                 self.register_dynamic_week(
                     topic_id=topic_id,
@@ -374,14 +391,19 @@ class RAGService:
                     topic_name=row["topic_name"],
                     initial_prompt=row["initial_prompt"],
                     glossary=glossary,
-                    slides_count=row["chunks_count"]
+                    slides_count=row["chunks_count"],
+                    course_id=course_id,
+                    demo_turns=demo_turns
                 )
             conn.close()
         except Exception:
             pass
 
-    def get_all_weeks(self) -> List[Dict[str, Any]]:
-        """Возвращает список всех 10 недель для селектора на фронтенде."""
+    def get_all_weeks(self, course_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Возвращает список недель силлабуса (с опциональной фильтрацией по курсу)."""
+        weeks = self._weeks
+        if course_id:
+            weeks = [w for w in weeks if w.get("course_id", "prog_ai_2026") == course_id]
         return [
             {
                 "week_number": w["week_number"],
@@ -390,12 +412,19 @@ class RAGService:
                 "topic_name": w["topic_name"],
                 "initial_prompt": w["initial_prompt"],
                 "glossary": w["glossary"],
+                "course_id": w.get("course_id", "prog_ai_2026"),
+                "demo_turns": w.get("demo_turns"),
             }
-            for w in self._weeks
+            for w in weeks
         ]
 
     def get_topic_data(self, topic_id: str) -> Optional[Dict[str, Any]]:
-        return self._map.get(topic_id) or self._map.get("week_09_deep_learning")
+        resolved = resolve_topic_id(topic_id)
+        if resolved in self._map:
+            return self._map[resolved]
+        if topic_id in self._map:
+            return self._map[topic_id]
+        return None
 
     def get_initial_prompt(self, topic_id: str) -> str:
         data = self.get_topic_data(topic_id)
@@ -406,7 +435,7 @@ class RAGService:
     def get_glossary(self, topic_id: str) -> List[str]:
         data = self.get_topic_data(topic_id)
         if data:
-            return data["glossary"]
+            return data.get("glossary", [])
         return []
 
     def register_dynamic_week(
@@ -417,7 +446,9 @@ class RAGService:
         topic_name: str,
         initial_prompt: str,
         glossary: List[str],
-        slides_count: int = 0
+        slides_count: int = 0,
+        course_id: str = "prog_ai_2026",
+        demo_turns: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """Динамическая регистрация загруженной лекции в силлабус курса."""
         week_data = {
@@ -428,9 +459,16 @@ class RAGService:
             "initial_prompt": initial_prompt,
             "glossary": glossary,
             "chunks": [],
-            "slides_count": slides_count
+            "slides_count": slides_count,
+            "course_id": course_id,
+            "demo_turns": demo_turns
         }
-        existing_idx = next((i for i, w in enumerate(self._weeks) if w["topic_id"] == topic_id or w["week_number"] == week_number), None)
+        existing_idx = next(
+            (i for i, w in enumerate(self._weeks) 
+             if (w["topic_id"] == topic_id or w["week_number"] == week_number) 
+             and w.get("course_id", "prog_ai_2026") == course_id),
+            None
+        )
         if existing_idx is not None:
             self._weeks[existing_idx] = week_data
         else:
@@ -438,9 +476,18 @@ class RAGService:
             self._weeks.sort(key=lambda x: x["week_number"])
 
         self._map[topic_id] = week_data
+        resolved = resolve_topic_id(topic_id)
+        if resolved != topic_id:
+            self._map[resolved] = week_data
         return week_data
 
-    def retrieve_chunks(self, query: str, topic_id: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    def retrieve_chunks(
+        self,
+        query: str,
+        topic_id: str,
+        course_id: Optional[str] = None,
+        top_k: int = 3
+    ) -> List[Dict[str, Any]]:
         """
         Поиск релевантных фрагментов для контекстного заземления:
         Сначала опрашивает HNSW векторную базу ChromaDB по слайдам лекции.
@@ -448,7 +495,12 @@ class RAGService:
         """
         try:
             from backend.vector_store import vector_store
-            vector_results = vector_store.search_relevant_slides(query=query, topic_id=topic_id, top_k=top_k)
+            vector_results = vector_store.search_relevant_slides(
+                query=query,
+                topic_id=topic_id,
+                course_id=course_id,
+                top_k=top_k
+            )
             if vector_results:
                 return [
                     {

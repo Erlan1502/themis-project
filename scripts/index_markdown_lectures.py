@@ -14,6 +14,7 @@ index_markdown_lectures.py
 import os
 import sys
 import re
+import json
 from typing import List, Dict, Any, Tuple
 import yaml
 
@@ -22,38 +23,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.vector_store import vector_store
 from backend.rag_service import rag_service
-from backend.database import get_connection
+from backend.database import (
+    init_db,
+    save_syllabus_week,
+    save_lecture_glossary,
+    save_course,
+    get_connection,
+)
 
 MD_DIR = os.path.join(r"data", "lectures_md")
 
 
 def init_syllabus_db():
-    """Создает таблицы в SQLite для хранения метаданных лекций и глоссария."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS syllabus_weeks (
-            week_number INTEGER PRIMARY KEY,
-            topic_id TEXT UNIQUE NOT NULL,
-            title TEXT NOT NULL,
-            topic_name TEXT NOT NULL,
-            initial_prompt TEXT NOT NULL,
-            md_path TEXT NOT NULL,
-            chunks_count INTEGER DEFAULT 0,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS lecture_glossary (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            topic_id TEXT NOT NULL,
-            term TEXT NOT NULL,
-            UNIQUE(topic_id, term),
-            FOREIGN KEY (topic_id) REFERENCES syllabus_weeks(topic_id)
-        )
-    """)
-    conn.commit()
-    conn.close()
+    """Инициализирует полную схему SQLite базы данных (courses, syllabus_weeks, lecture_glossary, etc.)."""
+    init_db()
 
 
 def parse_frontmatter_and_body(content: str) -> Tuple[Dict[str, Any], str]:
@@ -179,27 +162,38 @@ def index_all():
 
     # 1. Инициализируем таблицы SQLite
     init_syllabus_db()
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    # 2. Очищаем старые тестовые слайды из коллекции ChromaDB
-    try:
-        col = vector_store.collection
-        existing_count = col.count()
-        if existing_count > 0:
-            print(f"Очистка устаревших тестовых записей из ChromaDB (найдено: {existing_count})...")
-            all_ids = col.get()['ids']
-            if all_ids:
-                col.delete(ids=all_ids)
-            print("ChromaDB очищена.")
-    except Exception as e:
-        print(f"Предупреждение при очистке ChromaDB: {e}")
+    course_id = "prog_ai_2026"
+    save_course(
+        course_id=course_id,
+        title="Программирование для искусственного интеллекта (PAI)",
+        instructor="Белощицкая Светлана, д.т.н., профессор",
+        description="Официальный силлабус дисциплины PAI 2026-2027 Astana IT University"
+    )
 
     md_files = sorted([f for f in os.listdir(MD_DIR) if f.endswith(".md")])
     print(f"Найдено {len(md_files)} лекционных Markdown-файлов в {MD_DIR}.\n")
 
     total_chunks = 0
     total_code_chunks = 0
+
+    # Канонические демонстрационные реплики для Недели 9
+    week_09_demo_turns = [
+        {
+            "turn": 1,
+            "student": "Переобучение происходит, когда веса подстраиваются под специфический шум выборки, создавая избыточную ко-адаптацию нейронов.",
+            "system": "Отлично. Ты упомянул ко-адаптацию нейронов. Каким именно математическим механизмом метод Dropout предотвращает эту ко-адаптацию в процессе обратного распространения ошибки?"
+        },
+        {
+            "turn": 2,
+            "student": "Dropout случайным образом обнуляет активации нейронов с вероятностью p во время прямого прохода. Это заставляет каждый нейрон обучаться полезным признакам независимо от соседей, имитируя ансамбль подсетей.",
+            "system": "Глубокое понимание ансамблевой природы Dropout. А что происходит на экстремальных границах? Например, при слишком высокой вероятности отключения нейронов?"
+        },
+        {
+            "turn": 3,
+            "student": "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?",
+            "system": "Блестящий исследовательский вопрос! Отключение 80% нейронов катастрофически снижает эффективную емкость сети (model capacity), вызывая недообучение (underfitting). Баланс между регуляризацией и емкостью — фундаментальный компромисс глубокого обучения."
+        }
+    ]
 
     for fname in md_files:
         fpath = os.path.join(MD_DIR, fname)
@@ -222,26 +216,54 @@ def index_all():
         print(f"[{week_no}/9] {title}")
         print(f"      Чанков: {len(chunks)} (из них с кодом: {code_chunks}), Ключевых терминов: {len(glossary)}")
 
-        # 2. Добавление чанков в HNSW-индекс ChromaDB
-        indexed = vector_store.add_slides(
-            topic_id=topic_id,
-            week_number=week_no,
-            slides_data=chunks
-        )
+        # 2. Селективная синхронизация с ChromaDB
+        col = vector_store.collection
+        existing_topic_chunks = col.get(where={"topic_id": topic_id})
+        if existing_topic_chunks and existing_topic_chunks.get("ids"):
+            # Чанки уже векторизованы в HNSW. Обновляем метаданные с привязкой к course_id
+            chunk_ids = existing_topic_chunks["ids"]
+            metas = []
+            for m in existing_topic_chunks["metadatas"]:
+                new_m = dict(m)
+                new_m["course_id"] = course_id
+                new_m["topic_id"] = topic_id
+                metas.append(new_m)
+            col.update(ids=chunk_ids, metadatas=metas)
+            indexed = len(chunk_ids)
+            print(f"      -> Метаданные {indexed} чанков синхронизированы с курсом {course_id}")
+        else:
+            # Новая тема: выполняем полную векторизацию в HNSW
+            indexed = vector_store.add_slides(
+                topic_id=topic_id,
+                week_number=week_no,
+                slides_data=chunks,
+                course_id=course_id
+            )
+            print(f"      -> Векторизовано и сохранено {indexed} чанков в ChromaDB")
+
         total_chunks += indexed
 
-        # 3. Сохранение метаданных в SQLite
-        cursor.execute("""
-            INSERT OR REPLACE INTO syllabus_weeks
-            (week_number, topic_id, title, topic_name, initial_prompt, md_path, chunks_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (week_no, topic_id, title, topic_name, initial_prompt, fpath, len(chunks)))
+        # 3. Сохранение метаданных и глоссария в SQLite
+        demo_turns = week_09_demo_turns if (week_no == 9 or "week_09" in topic_id) else None
+        demo_json = json.dumps(demo_turns, ensure_ascii=False) if demo_turns else None
 
-        for term in glossary:
-            cursor.execute("""
-                INSERT OR IGNORE INTO lecture_glossary (topic_id, term)
-                VALUES (?, ?)
-            """, (topic_id, str(term).lower()))
+        save_syllabus_week(
+            course_id=course_id,
+            topic_id=topic_id,
+            week_number=week_no,
+            title=title,
+            topic_name=topic_name,
+            initial_prompt=initial_prompt,
+            demo_turns_json=demo_json,
+            md_path=fpath,
+            chunks_count=indexed
+        )
+
+        save_lecture_glossary(
+            course_id=course_id,
+            topic_id=topic_id,
+            terms=glossary
+        )
 
         # 4. Регистрация в RAG-сервисе
         rag_service.register_dynamic_week(
@@ -251,18 +273,18 @@ def index_all():
             topic_name=topic_name,
             initial_prompt=initial_prompt,
             glossary=glossary,
-            slides_count=len(chunks)
+            slides_count=indexed,
+            course_id=course_id,
+            demo_turns=demo_turns
         )
-        conn.commit()
-        print(f"      -> Сохранено в ChromaDB и SQLite (проиндексировано: {indexed} чанков).\n", flush=True)
-
-    conn.commit()
-    conn.close()
+        print(f"      -> Сохранено в SQLite (глоссарий: {len(glossary)} терминов).\n", flush=True)
 
     print("=" * 70)
     print(f"ИНДЕКСАЦИЯ УСПЕШНО ЗАВЕРШЕНА!")
-    print(f"Всего проиндексировано чанков: {total_chunks}")
+    print(f"Всего проиндексировано чанков курса {course_id}: {total_chunks}")
     print(f"Из них содержат реальный Python-код: {total_code_chunks}")
+    print(f"Векторное хранилище ChromaDB: HNSW Cosine (BGE-M3, 1024-dim)")
+    print("=" * 70)
     print(f"Векторное хранилище ChromaDB: HNSW Cosine (BGE-M3, 1024-dim)")
     print("=" * 70)
 

@@ -57,6 +57,8 @@ class AuditExtractionResult(BaseModel):
 @dataclass
 class StudentAuditRecord:
     student_id: str
+    course_id: str = "prog_ai_2026"
+    topic_id: str = "week_09_deep_learning"
     in_class_grade: Optional[float] = None  # Очная оценка преподавателя G_prof (неприкосновенна)
     session_status: str = "OPTED_OUT"      # OPTED_OUT | INCOMPLETE_IGNORED | COMPLETED
     turns_count: int = 0
@@ -77,6 +79,7 @@ class StudentAuditRecord:
     z_score: float = 0.0                    # Односторонний робастный Z-score
     zone: str = "NO_SIGNAL"                 # NO_SIGNAL | NORMAL | WATCHLIST | AUDIT_TRIGGER | HIGH_DISCREPANCY
     telemetry_clean: bool = True            # Флаг чистоты ввода (без аномального copy-paste)
+    teacher_decision: Optional[str] = None  # Решение преподавателя (напр. RECTIFIED_BY_PROFESSOR)
 
 
 # =====================================================================
@@ -139,6 +142,7 @@ class DashboardDistribution(BaseModel):
 
 class DashboardResponse(BaseModel):
     project: str = "Themis Project"
+    course_id: Optional[str] = "prog_ai_2026"
     topic_id: str
     total_students: int
     opted_out_or_incomplete: int

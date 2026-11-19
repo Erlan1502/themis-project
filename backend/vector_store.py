@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional
 import chromadb
 from chromadb import EmbeddingFunction, Documents, Embeddings
 from chromadb.config import Settings as ChromaSettings
+from backend.database import resolve_topic_id
 
 logger = logging.getLogger("themis.vector_store")
 
@@ -86,22 +87,24 @@ class ThemisVectorStore:
         self,
         topic_id: str,
         week_number: int,
-        slides_data: List[Dict[str, Any]]
+        slides_data: List[Dict[str, Any]],
+        course_id: str = "prog_ai_2026"
     ) -> int:
         """
         Индексирует слайды презентации в HNSW граф.
-        Каждый чанк содержит текст слайда, номер, заголовок и метаданные темы.
+        Каждый чанк содержит текст слайда, номер, заголовок и метаданные курса и темы.
         """
         if not slides_data:
             return 0
 
+        resolved_topic = resolve_topic_id(topic_id)
         ids = []
         documents = []
         metadatas = []
 
         for slide in slides_data:
             slide_no = slide.get("slide_number", 1)
-            chunk_id = f"{topic_id}_slide_{slide_no}"
+            chunk_id = f"{course_id}_{resolved_topic}_slide_{slide_no}"
             
             # Формируем семантический текст для векторного поиска
             text = f"Слайд {slide_no}: {slide.get('title', '')}\n{slide.get('text', '')}"
@@ -111,7 +114,8 @@ class ThemisVectorStore:
             ids.append(chunk_id)
             documents.append(text)
             metadatas.append({
-                "topic_id": topic_id,
+                "course_id": course_id,
+                "topic_id": resolved_topic,
                 "week_number": week_number,
                 "slide_number": slide_no,
                 "title": slide.get("title", ""),
@@ -126,25 +130,48 @@ class ThemisVectorStore:
                 documents=documents[i:i+batch_size],
                 metadatas=metadatas[i:i+batch_size]
             )
-        logger.info(f"Проиндексировано {len(ids)} слайдов для темы {topic_id}")
+        logger.info(f"Проиндексировано {len(ids)} слайдов для курса {course_id}, темы {resolved_topic}")
         return len(ids)
 
     def search_relevant_slides(
         self,
         query: str,
         topic_id: Optional[str] = None,
+        course_id: Optional[str] = None,
         top_k: int = 3
     ) -> List[Dict[str, Any]]:
         """
-        Поиск наиболее релевантных слайдов лекции по HNSW индексу.
+        Поиск наиболее релевантных слайдов лекции по HNSW индексу
+        с фильтрацией по курсу и теме.
         """
         try:
-            where_filter = {"topic_id": topic_id} if topic_id else None
+            resolved_topic = resolve_topic_id(topic_id) if topic_id else None
+            conditions = []
+            if course_id:
+                conditions.append({"course_id": course_id})
+            if resolved_topic:
+                conditions.append({"topic_id": resolved_topic})
+
+            if len(conditions) > 1:
+                where_filter = {"$and": conditions}
+            elif len(conditions) == 1:
+                where_filter = conditions[0]
+            else:
+                where_filter = None
+
             results = self.collection.query(
                 query_texts=[query],
                 n_results=top_k,
                 where=where_filter
             )
+
+            # Fallback: если при поиске с course_id ничего не найдено (старый индекс без course_id в метаданных)
+            if (not results or not results["documents"] or not results["documents"][0]) and course_id and resolved_topic:
+                results = self.collection.query(
+                    query_texts=[query],
+                    n_results=top_k,
+                    where={"topic_id": resolved_topic}
+                )
 
             slides = []
             if results and results["documents"] and results["documents"][0]:
@@ -164,13 +191,33 @@ class ThemisVectorStore:
             logger.error(f"Ошибка поиска в HNSW индексе: {e}")
             return []
 
-    def get_topic_slides_count(self, topic_id: str) -> int:
+    def get_topic_slides_count(self, topic_id: str, course_id: Optional[str] = None) -> int:
         """Возвращает количество проиндексированных слайдов по теме."""
         try:
-            res = self.collection.get(where={"topic_id": topic_id})
+            resolved = resolve_topic_id(topic_id)
+            if course_id:
+                res = self.collection.get(where={"$and": [{"course_id": course_id}, {"topic_id": resolved}]})
+            else:
+                res = self.collection.get(where={"topic_id": resolved})
             return len(res["ids"]) if res and "ids" in res else 0
         except Exception:
             return 0
+
+    def delete_topic_slides(self, topic_id: str, course_id: Optional[str] = None) -> int:
+        """Удаляет чанки только для указанной темы (и курса при наличии)."""
+        try:
+            resolved = resolve_topic_id(topic_id)
+            if course_id:
+                where_cond = {"$and": [{"course_id": course_id}, {"topic_id": resolved}]}
+            else:
+                where_cond = {"topic_id": resolved}
+            res = self.collection.get(where=where_cond)
+            if res and res.get("ids"):
+                self.collection.delete(ids=res["ids"])
+                return len(res["ids"])
+        except Exception as e:
+            logger.warning(f"Ошибка при удалении чанков темы {topic_id}: {e}")
+        return 0
 
 
 # Синглтон векторного хранилища

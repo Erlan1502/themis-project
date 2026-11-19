@@ -53,6 +53,12 @@ from backend.database import (
     get_student_audit,
     delete_student_dialogs,
     reset_student_in_db,
+    CANONICAL_TOPIC_ID,
+    CANONICAL_COURSE_ID,
+    resolve_topic_id,
+    get_courses,
+    save_syllabus_week,
+    save_lecture_glossary,
 )
 from backend.ingestion_service import ingestion_service, UPLOADS_DIR
 from backend.vector_store import vector_store
@@ -75,6 +81,8 @@ def sync_records_to_sqlite():
     for r in db_records.values():
         items.append({
             "student_id": r.student_id,
+            "course_id": getattr(r, "course_id", CANONICAL_COURSE_ID),
+            "topic_id": getattr(r, "topic_id", CANONICAL_TOPIC_ID),
             "student_name": getattr(r, "student_name", None) or STUDENT_NAMES_MAP.get(r.student_id, r.student_id),
             "group_id": getattr(r, "group_id", "group_1"),
             "in_class_grade": r.in_class_grade,
@@ -87,21 +95,24 @@ def sync_records_to_sqlite():
             "z_score": r.z_score,
             "zone": r.zone,
             "extraction_json": r.extraction.model_dump_json() if r.extraction else None,
+            "telemetry_clean": getattr(r, "telemetry_clean", True),
+            "teacher_decision": getattr(r, "teacher_decision", None),
         })
     bulk_save_student_audits(items)
 
 
 def reset_database(load_from_db_if_exists: bool = False):
     """
-    Инициализация состояния когорты (20 студентов Группы 1).
+    Инициализация состояния когорты.
     При load_from_db_if_exists=True восстанавливает актуальное состояние студентов из SQLite.
-    При сбросе инициализирует каноническую когорту и синхронизирует её в SQLite.
+    При сбросе или если база пуста инициализирует каноническую когорту и синхронизирует её в SQLite.
     """
     db_records.clear()
     db_sessions.clear()
+    rag_service.reload()
 
     existing_audits = get_all_student_audits() if load_from_db_if_exists else []
-    if existing_audits and len(existing_audits) == 20:
+    if existing_audits:
         for row in existing_audits:
             extraction = None
             if row.get("extraction_json"):
@@ -111,6 +122,8 @@ def reset_database(load_from_db_if_exists: bool = False):
                     extraction = None
             rec = StudentAuditRecord(
                 student_id=row["student_id"],
+                course_id=row.get("course_id", CANONICAL_COURSE_ID),
+                topic_id=row.get("topic_id", CANONICAL_TOPIC_ID),
                 student_name=row.get("student_name") or STUDENT_NAMES_MAP.get(row["student_id"], row["student_id"]),
                 group_id=row.get("group_id", "group_1"),
                 in_class_grade=row["in_class_grade"],
@@ -123,7 +136,8 @@ def reset_database(load_from_db_if_exists: bool = False):
                 rectified_delta=row["rectified_delta"] or 0.0,
                 z_score=row["z_score"] or 0.0,
                 zone=row["zone"] or "NO_SIGNAL",
-                telemetry_clean=True,
+                telemetry_clean=bool(row.get("telemetry_clean", 1)),
+                teacher_decision=row.get("teacher_decision"),
             )
             if rec.extraction and rec.turns_count >= settings.TARGET_TURNS:
                 engine.compute_individual_depth(rec)
@@ -148,8 +162,8 @@ def reset_database(load_from_db_if_exists: bool = False):
         if turns:
             db_sessions["sess_canonical_stud_k"] = {
                 "student_id": "stud_aai_042",
-                "course_id": "prog_ai_2026",
-                "topic_id": "topic_05_regularization",
+                "course_id": CANONICAL_COURSE_ID,
+                "topic_id": CANONICAL_TOPIC_ID,
                 "turns": [
                     {
                         "turn_number": t["turn_number"],
@@ -162,7 +176,7 @@ def reset_database(load_from_db_if_exists: bool = False):
                     for t in turns
                 ],
                 "created_at": 0,
-                "active": True,
+                "active": False,
             }
 
     if get_session("sess_canonical_stud_015"):
@@ -170,8 +184,8 @@ def reset_database(load_from_db_if_exists: bool = False):
         if turns:
             db_sessions["sess_canonical_stud_015"] = {
                 "student_id": "stud_aai_015",
-                "course_id": "prog_ai_2026",
-                "topic_id": "topic_05_regularization",
+                "course_id": CANONICAL_COURSE_ID,
+                "topic_id": CANONICAL_TOPIC_ID,
                 "turns": [
                     {
                         "turn_number": t["turn_number"],
@@ -217,13 +231,22 @@ app.add_middleware(
 # REST API ЭНДПОИНТЫ
 # =====================================================================
 
+@app.get("/api/v1/courses")
+async def list_courses():
+    """
+    Возвращает список всех доступных курсов из базы данных SQLite.
+    Позволяет изолировать силлабусы, глоссарии и когорты студентов.
+    """
+    return get_courses()
+
+
 @app.get("/api/v1/syllabus/weeks")
-async def get_syllabus_weeks():
+async def get_syllabus_weeks(course_id: Optional[str] = Query(None)):
     """
     Возвращает список учебных недель курса 'Программирование для ИИ' (PAI 2026).
     Включает как канонические недели, так и динамически загруженные преподавателем.
     """
-    return rag_service.get_all_weeks()
+    return rag_service.get_all_weeks(course_id=course_id)
 
 
 @app.post("/api/v1/course/upload")
@@ -231,6 +254,7 @@ async def upload_course_lecture(
     file: UploadFile = File(...),
     week_number: int = Form(...),
     topic_name: str = Form(...),
+    course_id: str = Form("prog_ai_2026"),
 ):
     """
     Эндпоинт загрузки и онлайновой индексации лекций курса (PPTX / PDF).
@@ -239,7 +263,7 @@ async def upload_course_lecture(
     2. Разбирает слайды на семантические чанки
     3. Индексирует в ChromaDB (HNSW граф) с помощью модели эмбеддингов BGE-M3
     4. Автоматически извлекает глоссарий и генерирует стартовый сократический триггер
-    5. Регистрирует новую неделю в силлабусе курса без перезапуска сервера
+    5. Регистрирует новую неделю в силлабусе курса в памяти и персистентно в SQLite
     """
     filename = file.filename or "lecture.pptx"
     ext = os.path.splitext(filename)[1].lower()
@@ -263,11 +287,12 @@ async def upload_course_lecture(
 
     topic_id = f"week_{week_number:02d}_custom"
 
-    # Векторизация и индексация в HNSW граф ChromaDB
+    # Векторизация и селективная индексация в HNSW граф ChromaDB
     indexed_count = vector_store.add_slides(
         topic_id=topic_id,
         week_number=week_number,
-        slides_data=slides_data
+        slides_data=slides_data,
+        course_id=course_id
     )
 
     # Генерация метаданных и глоссария
@@ -278,7 +303,24 @@ async def upload_course_lecture(
         slides=slides_data
     )
 
-    # Динамическая регистрация в силлабусе
+    # Сохранение в постоянную реляционную базу SQLite
+    save_syllabus_week(
+        course_id=course_id,
+        topic_id=topic_id,
+        week_number=week_number,
+        title=meta["title"],
+        topic_name=meta["topic_name"],
+        initial_prompt=meta["initial_prompt"],
+        md_path=saved_path,
+        chunks_count=len(slides_data)
+    )
+    save_lecture_glossary(
+        course_id=course_id,
+        topic_id=topic_id,
+        terms=meta["glossary"]
+    )
+
+    # Динамическая регистрация в силлабусе RAG-сервиса
     rag_service.register_dynamic_week(
         topic_id=topic_id,
         week_number=week_number,
@@ -286,7 +328,8 @@ async def upload_course_lecture(
         topic_name=meta["topic_name"],
         initial_prompt=meta["initial_prompt"],
         glossary=meta["glossary"],
-        slides_count=len(slides_data)
+        slides_count=len(slides_data),
+        course_id=course_id
     )
 
     return {
@@ -339,21 +382,31 @@ async def get_students_list(group_id: Optional[str] = Query(None)):
 
 
 @app.get("/api/v1/session/active/{student_id}")
-async def get_active_session(student_id: str, topic_id: str = Query("topic_05_regularization")):
+async def get_active_session(
+    student_id: str,
+    topic_id: str = Query("week_09_deep_learning"),
+    course_id: str = Query("prog_ai_2026")
+):
     """
     Эндпоинт восстановления сессии студента из оперативной памяти или SQLite.
     Позволяет бесшовно восстанавливать историю диалога при F5 или смене студента в UI.
     """
+    resolved_topic = resolve_topic_id(topic_id)
     target_session_id = None
     # 1. Поиск в памяти
     for s_id, s_data in db_sessions.items():
-        if s_data.get("student_id") == student_id and s_data.get("topic_id") == topic_id:
-            target_session_id = s_id
-            break
+        if s_data.get("student_id") == student_id:
+            s_course = s_data.get("course_id", "prog_ai_2026")
+            s_topic = resolve_topic_id(s_data.get("topic_id", CANONICAL_TOPIC_ID))
+            if s_course == course_id and (s_topic == resolved_topic or s_data.get("topic_id") == topic_id):
+                target_session_id = s_id
+                break
 
     # 2. Если в памяти нет, ищем в SQLite
     if not target_session_id:
-        row = get_latest_session_for_student(student_id, topic_id)
+        row = get_latest_session_for_student(student_id, topic_id=resolved_topic, course_id=course_id)
+        if not row and topic_id != resolved_topic:
+            row = get_latest_session_for_student(student_id, topic_id=topic_id, course_id=course_id)
         if row:
             target_session_id = row["session_id"]
             db_turns = get_turns(target_session_id)
@@ -376,7 +429,7 @@ async def get_active_session(student_id: str, topic_id: str = Query("topic_05_re
                 "active": row["status"] == "ACTIVE",
             }
 
-    initial_prompt = rag_service.get_initial_prompt(topic_id)
+    initial_prompt = rag_service.get_initial_prompt(resolved_topic)
 
     if not target_session_id or target_session_id not in db_sessions:
         return {
@@ -411,21 +464,25 @@ async def start_session(req: SessionStartRequest):
     Эндпоинт 1: Инициализация добровольной сократической сессии («Цифровой пандус»).
     Проверяет доступность окна расписания и возвращает контекстный стартовый вопрос.
     """
+    resolved_topic = resolve_topic_id(req.topic_id)
+    initial_prompt = rag_service.get_initial_prompt(resolved_topic)
+
     # Если принудительный рестарт не запрошен, проверяем наличие уже существующей активной сессии
     if not req.force_open:
         for s_id, s_data in db_sessions.items():
-            if s_data.get("student_id") == req.student_id and s_data.get("topic_id") == req.topic_id and s_data.get("active", True):
-                initial_prompt = rag_service.get_initial_prompt(req.topic_id)
-                return SessionStartResponse(
-                    session_id=s_id,
-                    status="ACTIVE",
-                    time_remaining_seconds=settings.SCHEDULE_WINDOW_MINUTES * 60,
-                    policy_notice=(
-                        "Добровольная сессия Themis Project. Результат не снижает очную оценку "
-                        "и служит только для раскрытия ваших знаний."
-                    ),
-                    initial_prompt=initial_prompt,
-                )
+            if s_data.get("student_id") == req.student_id:
+                s_topic = resolve_topic_id(s_data.get("topic_id"))
+                if s_topic == resolved_topic and s_data.get("active", True):
+                    return SessionStartResponse(
+                        session_id=s_id,
+                        status="ACTIVE",
+                        time_remaining_seconds=settings.SCHEDULE_WINDOW_MINUTES * 60,
+                        policy_notice=(
+                            "Добровольная сессия Themis Project. Результат не снижает очную оценку "
+                            "и служит только для раскрытия ваших знаний."
+                        ),
+                        initial_prompt=initial_prompt,
+                    )
 
     # Создаем новую сессию
     session_id = f"sess_{uuid.uuid4().hex[:8]}"
@@ -434,13 +491,15 @@ async def start_session(req: SessionStartRequest):
     if req.student_id not in db_records:
         db_records[req.student_id] = StudentAuditRecord(
             student_id=req.student_id,
+            course_id=req.course_id,
+            topic_id=resolved_topic,
+            student_name=STUDENT_NAMES_MAP.get(req.student_id, req.student_id),
             in_class_grade=70.0,
             session_status="INCOMPLETE_IGNORED",
             turns_count=0,
             total_tokens=0,
+            telemetry_clean=True,
         )
-
-    initial_prompt = rag_service.get_initial_prompt(req.topic_id)
 
     db_sessions[session_id] = {
         "student_id": req.student_id,
@@ -627,23 +686,32 @@ async def dialog_turn(req: DialogTurnRequest):
 async def sync_in_class_grades(req: GradeSyncRequest):
     """
     Эндпоинт 3: Синхронизация очных оценок преподавателя.
-    Запускает реактивный когортный расчет (Этап 3B) за < 10 мс.
+    Запускает реактивный когортный расчет (Этап 3B) за < 10 мс и сохраняет изменения в SQLite.
     """
     synced = 0
+    resolved_topic = resolve_topic_id(req.topic_id)
     for item in req.records:
         if item.student_id in db_records:
-            db_records[item.student_id].in_class_grade = item.in_class_grade
+            rec = db_records[item.student_id]
+            rec.in_class_grade = item.in_class_grade
+            rec.course_id = req.course_id
+            rec.topic_id = resolved_topic
             synced += 1
         else:
             rec = StudentAuditRecord(
                 student_id=item.student_id,
+                course_id=req.course_id,
+                topic_id=resolved_topic,
+                student_name=STUDENT_NAMES_MAP.get(item.student_id, item.student_id),
                 in_class_grade=item.in_class_grade,
                 session_status="OPTED_OUT",
+                telemetry_clean=True,
             )
             db_records[item.student_id] = rec
             synced += 1
 
     summary = engine.compute_cohort_discrepancy(list(db_records.values()))
+    sync_records_to_sqlite()
     return GradeSyncResponse(
         status="SUCCESS",
         synced_count=synced,
@@ -653,18 +721,22 @@ async def sync_in_class_grades(req: GradeSyncRequest):
 
 @app.get("/api/v1/audit/dashboard", response_model=DashboardResponse)
 async def get_audit_dashboard(
-    topic_id: str = Query("topic_05_regularization"),
+    topic_id: str = Query("week_09_deep_learning"),
+    course_id: str = Query("prog_ai_2026"),
     group_id: Optional[str] = Query(None)
 ):
     """
     Эндпоинт 4: Дашборд распределения сигм и полный список когорты (Консоль преподавателя).
-    Поддерживает фильтрацию по группе (group_id='group_1' — 20 студентов).
-    Если group_id не указан — выдает полную когорту потока (28 студентов).
+    Поддерживает фильтрацию по курсу (course_id), теме (topic_id) и группе (group_id).
     """
+    resolved_topic = resolve_topic_id(topic_id)
+    records_list = [
+        r for r in db_records.values()
+        if getattr(r, "course_id", "prog_ai_2026") == course_id
+        and resolve_topic_id(getattr(r, "topic_id", CANONICAL_TOPIC_ID)) == resolved_topic
+    ]
     if group_id:
-        records_list = [r for r in db_records.values() if getattr(r, "group_id", "group_1") == group_id]
-    else:
-        records_list = list(db_records.values())
+        records_list = [r for r in records_list if getattr(r, "group_id", "group_1") == group_id]
 
     summary = engine.compute_cohort_discrepancy(records_list)
 
@@ -686,7 +758,8 @@ async def get_audit_dashboard(
             "rectified_delta": r.rectified_delta,
             "z_score": r.z_score,
             "zone": r.zone,
-            "telemetry_clean": r.telemetry_clean,
+            "telemetry_clean": getattr(r, "telemetry_clean", True),
+            "teacher_decision": getattr(r, "teacher_decision", None),
             "has_report": r.extraction is not None,
         })
 
@@ -703,6 +776,7 @@ async def get_audit_dashboard(
 
     return DashboardResponse(
         project="Themis Project",
+        course_id=course_id,
         topic_id=topic_id,
         total_students=total_students,
         opted_out_or_incomplete=opted_out_count,
@@ -714,12 +788,26 @@ async def get_audit_dashboard(
 
 
 @app.get("/api/v1/audit/report/{student_id}", response_model=AIReportResponse)
-async def get_student_report(student_id: str, topic_id: str = Query("topic_05_regularization")):
+async def get_student_report(
+    student_id: str,
+    topic_id: str = Query("week_09_deep_learning"),
+    course_id: str = Query("prog_ai_2026")
+):
     """
     Эндпоинт 5: Доказательный аналитический отчет аудита (AI Discrepancy Report).
     Предоставляет преподавателю цитаты, концепты и психометрические основания.
     """
-    rec = db_records.get(student_id)
+    resolved_topic = resolve_topic_id(topic_id)
+    rec = None
+    for r in db_records.values():
+        if (r.student_id == student_id and 
+            getattr(r, "course_id", "prog_ai_2026") == course_id and 
+            resolve_topic_id(getattr(r, "topic_id", CANONICAL_TOPIC_ID)) == resolved_topic):
+            rec = r
+            break
+    if not rec:
+        rec = db_records.get(student_id)
+
     if not rec:
         raise HTTPException(status_code=404, detail="Student not found")
 
@@ -853,7 +941,7 @@ async def restore_canonical_student(student_id: str):
         db_sessions["sess_canonical_stud_k"] = {
             "student_id": "stud_aai_042",
             "course_id": "prog_ai_2026",
-            "topic_id": "topic_05_regularization",
+            "topic_id": "week_09_deep_learning",
             "turns": [
                 {
                     "turn_number": 1,

@@ -3,7 +3,9 @@ database.py
 
 Постоянное реляционное хранилище Themis Project на базе SQLite.
 Обеспечивает сохранение истории сократических сессий, пошаговых реплик,
-детекции повторов (similarity) и результатов психометрического аудита.
+детекции повторов (similarity), результатов психометрического аудита,
+а также мульти-курсовую изоляцию (courses, syllabus_weeks, lecture_glossary,
+student_identities, ingestion_jobs).
 """
 
 import sqlite3
@@ -13,6 +15,19 @@ from typing import List, Dict, Any, Optional
 
 DB_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "themis_data.db")
 
+CANONICAL_COURSE_ID = "prog_ai_2026"
+CANONICAL_TOPIC_ID = "week_09_deep_learning"
+TOPIC_ALIASES = {
+    "topic_05_regularization": "week_09_deep_learning",
+}
+
+
+def resolve_topic_id(topic_id: Optional[str]) -> str:
+    """Унифицирует идентификатор темы, приводя алиасы к каноническому ID."""
+    if not topic_id:
+        return CANONICAL_TOPIC_ID
+    return TOPIC_ALIASES.get(topic_id, topic_id)
+
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -20,12 +35,193 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _migrate_db(conn: sqlite3.Connection):
+    """Плавная миграция существующих таблиц SQLite к новой мульти-курсовой схеме."""
+    cursor = conn.cursor()
+
+    # 1. Миграция syllabus_weeks: добавление course_id и составного ключа (course_id, topic_id)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='syllabus_weeks'")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(syllabus_weeks)")
+        cols = [c["name"] for c in cursor.fetchall()]
+        if "course_id" not in cols:
+            cursor.execute("ALTER TABLE syllabus_weeks RENAME TO _mig_sw_old")
+            cursor.execute("""
+                CREATE TABLE syllabus_weeks (
+                    course_id TEXT NOT NULL,
+                    topic_id TEXT NOT NULL,
+                    week_number INTEGER,
+                    title TEXT NOT NULL,
+                    topic_name TEXT,
+                    initial_prompt TEXT,
+                    demo_turns_json TEXT,
+                    md_path TEXT,
+                    chunks_count INTEGER DEFAULT 0,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (course_id, topic_id)
+                )
+            """)
+            cursor.execute("""
+                INSERT OR REPLACE INTO syllabus_weeks (
+                    course_id, topic_id, week_number, title, topic_name, initial_prompt, demo_turns_json, md_path, chunks_count, updated_at
+                )
+                SELECT 
+                    'prog_ai_2026', topic_id, week_number, title, topic_name, initial_prompt, NULL, md_path, chunks_count, updated_at
+                FROM _mig_sw_old
+            """)
+            cursor.execute("DROP TABLE _mig_sw_old")
+            conn.commit()
+
+    # 2. Миграция lecture_glossary: добавление course_id и составного ключа (course_id, topic_id, term)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='lecture_glossary'")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(lecture_glossary)")
+        cols = [c["name"] for c in cursor.fetchall()]
+        if "course_id" not in cols:
+            cursor.execute("ALTER TABLE lecture_glossary RENAME TO _mig_lg_old")
+            cursor.execute("""
+                CREATE TABLE lecture_glossary (
+                    course_id TEXT NOT NULL,
+                    topic_id TEXT NOT NULL,
+                    term TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (course_id, topic_id, term)
+                )
+            """)
+            cursor.execute("""
+                INSERT OR IGNORE INTO lecture_glossary (course_id, topic_id, term)
+                SELECT 'prog_ai_2026', topic_id, term FROM _mig_lg_old
+            """)
+            cursor.execute("DROP TABLE _mig_lg_old")
+            conn.commit()
+
+    # 3. Миграция student_audits: составной ключ (student_id, course_id, topic_id) + telemetry_clean, teacher_decision
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_audits'")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(student_audits)")
+        col_infos = cursor.fetchall()
+        cols = [c["name"] for c in col_infos]
+        pk_cols = [c["name"] for c in col_infos if c["pk"] > 0]
+        if "course_id" not in cols or "telemetry_clean" not in cols or len(pk_cols) < 3:
+            cursor.execute("ALTER TABLE student_audits RENAME TO _mig_sa_old")
+            cursor.execute("""
+                CREATE TABLE student_audits (
+                    student_id TEXT NOT NULL,
+                    course_id TEXT NOT NULL DEFAULT 'prog_ai_2026',
+                    topic_id TEXT NOT NULL DEFAULT 'week_09_deep_learning',
+                    student_name TEXT,
+                    group_id TEXT DEFAULT 'group_1',
+                    in_class_grade REAL,
+                    session_status TEXT,
+                    turns_count INTEGER DEFAULT 0,
+                    total_tokens INTEGER DEFAULT 0,
+                    ai_depth_score REAL,
+                    raw_delta REAL,
+                    rectified_delta REAL,
+                    z_score REAL,
+                    zone TEXT,
+                    extraction_json TEXT,
+                    telemetry_clean BOOLEAN DEFAULT 1,
+                    teacher_decision TEXT DEFAULT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (student_id, course_id, topic_id)
+                )
+            """)
+            # Проверяем какие колонки были в старой таблице
+            old_has_tel = "telemetry_clean" in cols
+            old_has_dec = "teacher_decision" in cols
+            tel_expr = "telemetry_clean" if old_has_tel else "1"
+            dec_expr = "teacher_decision" if old_has_dec else "NULL"
+
+            cursor.execute(f"""
+                INSERT OR REPLACE INTO student_audits (
+                    student_id, course_id, topic_id, student_name, group_id, in_class_grade, session_status,
+                    turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
+                    z_score, zone, extraction_json, telemetry_clean, teacher_decision, updated_at
+                )
+                SELECT 
+                    student_id, 'prog_ai_2026', 'week_09_deep_learning', student_name, group_id, in_class_grade, session_status,
+                    turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
+                    z_score, zone, extraction_json, {tel_expr}, {dec_expr}, updated_at
+                FROM _mig_sa_old
+            """)
+            cursor.execute("DROP TABLE _mig_sa_old")
+            conn.commit()
+
+
 def init_db():
-    """Инициализация схемы таблиц SQLite."""
+    """Инициализация схемы таблиц SQLite с поддержкой курсов, силлабуса и сессий."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Таблица сессий
+    # 1. Таблица курсов
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS courses (
+            course_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            instructor TEXT,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 2. Таблица силлабуса недель
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS syllabus_weeks (
+            course_id TEXT NOT NULL,
+            topic_id TEXT NOT NULL,
+            week_number INTEGER,
+            title TEXT NOT NULL,
+            topic_name TEXT,
+            initial_prompt TEXT,
+            demo_turns_json TEXT,
+            md_path TEXT,
+            chunks_count INTEGER DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (course_id, topic_id)
+        )
+    """)
+
+    # 3. Таблица глоссария тем
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS lecture_glossary (
+            course_id TEXT NOT NULL,
+            topic_id TEXT NOT NULL,
+            term TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (course_id, topic_id, term)
+        )
+    """)
+
+    # 4. Таблица цифровых личностей студентов (TMA / Telegram связка)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS student_identities (
+            student_id TEXT PRIMARY KEY,
+            telegram_id INTEGER UNIQUE,
+            telegram_username TEXT,
+            display_name TEXT,
+            group_id TEXT DEFAULT 'group_1',
+            default_grade REAL DEFAULT 75.0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 5. Таблица фоновых задач индексации курсов
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ingestion_jobs (
+            job_id TEXT PRIMARY KEY,
+            course_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            progress INTEGER DEFAULT 0,
+            total INTEGER DEFAULT 0,
+            message TEXT,
+            error TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 6. Таблица сессий
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             session_id TEXT PRIMARY KEY,
@@ -37,7 +233,7 @@ def init_db():
         )
     """)
 
-    # Таблица диалоговых реплик с фиксацией схожести и флага повтора
+    # 7. Таблица диалоговых реплик
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS dialog_turns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,10 +250,12 @@ def init_db():
         )
     """)
 
-    # Таблица аудита студентов и ректификации
+    # 8. Таблица аудита студентов и ректификации с составным ключом
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS student_audits (
-            student_id TEXT PRIMARY KEY,
+            student_id TEXT NOT NULL,
+            course_id TEXT NOT NULL DEFAULT 'prog_ai_2026',
+            topic_id TEXT NOT NULL DEFAULT 'week_09_deep_learning',
             student_name TEXT,
             group_id TEXT DEFAULT 'group_1',
             in_class_grade REAL,
@@ -70,31 +268,295 @@ def init_db():
             z_score REAL,
             zone TEXT,
             extraction_json TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            telemetry_clean BOOLEAN DEFAULT 1,
+            teacher_decision TEXT DEFAULT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (student_id, course_id, topic_id)
         )
     """)
 
-    # Миграция колонок на случай если таблица уже существовала в ранней версии
+    conn.commit()
+
+    # Запускаем миграцию на случай существования старой схемы
+    _migrate_db(conn)
+
+    # Очистка временных таблиц миграции при наличии
     try:
-        cursor.execute("ALTER TABLE student_audits ADD COLUMN student_name TEXT")
-    except sqlite3.OperationalError:
+        cursor.execute("DROP TABLE IF EXISTS _mig_sw_old")
+        cursor.execute("DROP TABLE IF EXISTS _mig_lg_old")
+        cursor.execute("DROP TABLE IF EXISTS _mig_sa_old")
+        conn.commit()
+    except Exception:
         pass
-    try:
-        cursor.execute("ALTER TABLE student_audits ADD COLUMN group_id TEXT DEFAULT 'group_1'")
-    except sqlite3.OperationalError:
-        pass
+
+    # Гарантируем наличие основного курса PAI в таблице courses
+    cursor.execute("""
+        INSERT OR IGNORE INTO courses (course_id, title, instructor, description)
+        VALUES (
+            'prog_ai_2026',
+            'Программирование для искусственного интеллекта (PAI)',
+            'Белощицкая Светлана, д.т.н., профессор',
+            'Официальный силлабус дисциплины PAI 2026-2027 Astana IT University'
+        )
+    """)
 
     conn.commit()
     conn.close()
 
+    # Инициализация дефолтных студентов в student_identities
+    _init_default_student_identities()
 
-def save_session(session_id: str, student_id: str, course_id: str, topic_id: str, status: str = "ACTIVE"):
+
+def _init_default_student_identities():
+    """Предзаполнение таблицы student_identities для 20 студентов канонической Группы 1."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as cnt FROM student_identities")
+        row = cursor.fetchone()
+        if row and row["cnt"] == 0:
+            student_names = {
+                "stud_aai_042": "Студент К. (Анонимный аудит)",
+                "stud_aai_001": "Алексей Смирнов",
+                "stud_aai_002": "Айгерим Тулегенова",
+                "stud_aai_003": "Даниил Морозов",
+                "stud_aai_004": "Екатерина Волкова",
+                "stud_aai_005": "Жандос Касымов",
+                "stud_aai_006": "Иван Новиков",
+                "stud_aai_007": "Мария Федорова",
+                "stud_aai_008": "Нурлан Сапаров",
+                "stud_aai_009": "Ольга Васильева",
+                "stud_aai_010": "Павел Ковалев",
+                "stud_aai_011": "Руслан Ахметов",
+                "stud_aai_015": "София Михайлова",
+                "stud_aai_019": "Тимур Исаев",
+                "stud_aai_020": "Александр Попов",
+                "stud_aai_021": "Виктория Лебедева",
+                "stud_aai_022": "Дмитрий Козлов",
+                "stud_aai_023": "Елена Соколова",
+                "stud_aai_024": "Игорь Павлов",
+                "stud_aai_025": "Ксения Макарова",
+            }
+            default_grades = {
+                "stud_aai_042": 70.0, "stud_aai_001": 72.0, "stud_aai_002": 74.0, "stud_aai_003": 75.0,
+                "stud_aai_004": 78.0, "stud_aai_005": 80.0, "stud_aai_006": 82.0, "stud_aai_007": 85.0,
+                "stud_aai_008": 87.0, "stud_aai_009": 88.0, "stud_aai_010": 68.0, "stud_aai_011": 71.0,
+                "stud_aai_015": 73.0, "stud_aai_019": 76.0, "stud_aai_020": 86.0, "stud_aai_021": 89.0,
+                "stud_aai_022": 90.0, "stud_aai_023": 91.0, "stud_aai_024": 92.0, "stud_aai_025": 94.0,
+            }
+            for s_id, name in student_names.items():
+                cursor.execute("""
+                    INSERT OR IGNORE INTO student_identities
+                    (student_id, display_name, group_id, default_grade)
+                    VALUES (?, ?, 'group_1', ?)
+                """, (s_id, name, default_grades.get(s_id, 75.0)))
+            conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+# =====================================================================
+# КУРСЫ И СИЛЛАБУС (COURSES, SYLLABUS_WEEKS, LECTURE_GLOSSARY)
+# =====================================================================
+
+def get_courses() -> List[Dict[str, Any]]:
+    """Получить список всех курсов."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM courses ORDER BY created_at ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_course(course_id: str) -> Optional[Dict[str, Any]]:
+    """Получить курс по ID."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM courses WHERE course_id = ?", (course_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def save_course(course_id: str, title: str, instructor: str = "", description: str = ""):
+    """Сохранить или обновить курс."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
+        INSERT OR REPLACE INTO courses (course_id, title, instructor, description)
+        VALUES (?, ?, ?, ?)
+    """, (course_id, title, instructor, description))
+    conn.commit()
+    conn.close()
+
+
+def save_syllabus_week(
+    course_id: str,
+    topic_id: str,
+    week_number: int,
+    title: str,
+    topic_name: str,
+    initial_prompt: str,
+    demo_turns_json: Optional[str] = None,
+    md_path: str = "",
+    chunks_count: int = 0
+):
+    """Сохранить или обновить запись недели силлабуса."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO syllabus_weeks 
+        (course_id, topic_id, week_number, title, topic_name, initial_prompt, demo_turns_json, md_path, chunks_count, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (course_id, topic_id, week_number, title, topic_name, initial_prompt, demo_turns_json, md_path, chunks_count))
+    conn.commit()
+    conn.close()
+
+
+def get_syllabus_weeks(course_id: str = "prog_ai_2026") -> List[Dict[str, Any]]:
+    """Получить все недели силлабуса для курса."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM syllabus_weeks 
+        WHERE course_id = ?
+        ORDER BY week_number ASC
+    """, (course_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_syllabus_week(course_id: str, topic_id: str) -> Optional[Dict[str, Any]]:
+    """Получить конкретную неделю силлабуса по курсу и теме."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    resolved = resolve_topic_id(topic_id)
+    cursor.execute("""
+        SELECT * FROM syllabus_weeks 
+        WHERE course_id = ? AND (topic_id = ? OR topic_id = ?)
+    """, (course_id, resolved, topic_id))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def save_lecture_glossary(course_id: str, topic_id: str, terms: List[str]):
+    """Сохранить термины глоссария для темы."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    resolved = resolve_topic_id(topic_id)
+    for t in terms:
+        clean_t = str(t).strip().lower()
+        if clean_t:
+            cursor.execute("""
+                INSERT OR IGNORE INTO lecture_glossary (course_id, topic_id, term)
+                VALUES (?, ?, ?)
+            """, (course_id, resolved, clean_t))
+    conn.commit()
+    conn.close()
+
+
+def get_lecture_glossary(course_id: str, topic_id: str) -> List[str]:
+    """Получить список терминов глоссария темы."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    resolved = resolve_topic_id(topic_id)
+    cursor.execute("""
+        SELECT term FROM lecture_glossary 
+        WHERE course_id = ? AND (topic_id = ? OR topic_id = ?)
+        ORDER BY term ASC
+    """, (course_id, resolved, topic_id))
+    rows = cursor.fetchall()
+    conn.close()
+    return [r["term"] for r in rows]
+
+
+# =====================================================================
+# СТУДЕНТЫ И ИНЖЕСТ (STUDENT_IDENTITIES, INGESTION_JOBS)
+# =====================================================================
+
+def get_student_identity(student_id: str) -> Optional[Dict[str, Any]]:
+    """Получить профиль студента."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM student_identities WHERE student_id = ?", (student_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def save_student_identity(
+    student_id: str,
+    display_name: str,
+    telegram_id: Optional[int] = None,
+    telegram_username: Optional[str] = None,
+    group_id: str = "group_1",
+    default_grade: float = 75.0
+):
+    """Создать или обновить профиль студента."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO student_identities 
+        (student_id, telegram_id, telegram_username, display_name, group_id, default_grade)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (student_id, telegram_id, telegram_username, display_name, group_id, default_grade))
+    conn.commit()
+    conn.close()
+
+
+def save_ingestion_job(
+    job_id: str,
+    course_id: str,
+    status: str,
+    progress: int = 0,
+    total: int = 0,
+    message: str = "",
+    error: Optional[str] = None
+):
+    """Создать запись задачи индексации."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO ingestion_jobs 
+        (job_id, course_id, status, progress, total, message, error, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (job_id, course_id, status, progress, total, message, error))
+    conn.commit()
+    conn.close()
+
+
+def get_ingestion_job(job_id: str) -> Optional[Dict[str, Any]]:
+    """Получить статус задачи индексации."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ingestion_jobs WHERE job_id = ?", (job_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+# =====================================================================
+# СЕССИИ И РЕПЛИКИ (SESSIONS, DIALOG_TURNS)
+# =====================================================================
+
+def save_session(
+    session_id: str,
+    student_id: str,
+    course_id: str = "prog_ai_2026",
+    topic_id: str = "week_09_deep_learning",
+    status: str = "ACTIVE"
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+    resolved_topic = resolve_topic_id(topic_id)
+    cursor.execute("""
         INSERT OR REPLACE INTO sessions (session_id, student_id, course_id, topic_id, status)
         VALUES (?, ?, ?, ?, ?)
-    """, (session_id, student_id, course_id, topic_id, status))
+    """, (session_id, student_id, course_id, resolved_topic, status))
     conn.commit()
     conn.close()
 
@@ -169,37 +631,53 @@ def get_session_student_messages(session_id: str) -> List[str]:
     return [r["student_message"] for r in rows]
 
 
-def get_all_student_messages_for_topic(student_id: str, topic_id: str) -> List[str]:
+def get_all_student_messages_for_topic(
+    student_id: str,
+    topic_id: str,
+    course_id: Optional[str] = None
+) -> List[str]:
     """Возвращает сообщения студента по данной теме за все сессии для сквозного сравнения."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT dt.student_message FROM dialog_turns dt
-        JOIN sessions s ON dt.session_id = s.session_id
-        WHERE s.student_id = ? AND s.topic_id = ? AND dt.is_duplicate = 0
-        ORDER BY dt.id ASC
-    """, (student_id, topic_id))
+    resolved_topic = resolve_topic_id(topic_id)
+    if course_id:
+        cursor.execute("""
+            SELECT dt.student_message FROM dialog_turns dt
+            JOIN sessions s ON dt.session_id = s.session_id
+            WHERE s.student_id = ? AND s.course_id = ? AND (s.topic_id = ? OR s.topic_id = ?) AND dt.is_duplicate = 0
+            ORDER BY dt.id ASC
+        """, (student_id, course_id, resolved_topic, topic_id))
+    else:
+        cursor.execute("""
+            SELECT dt.student_message FROM dialog_turns dt
+            JOIN sessions s ON dt.session_id = s.session_id
+            WHERE s.student_id = ? AND (s.topic_id = ? OR s.topic_id = ?) AND dt.is_duplicate = 0
+            ORDER BY dt.id ASC
+        """, (student_id, resolved_topic, topic_id))
     rows = cursor.fetchall()
     conn.close()
     return [r["student_message"] for r in rows]
 
 
-def get_latest_session_for_student(student_id: str, topic_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Возвращает последнюю сохраненную сессию для студента."""
+def get_latest_session_for_student(
+    student_id: str,
+    topic_id: Optional[str] = None,
+    course_id: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Возвращает последнюю сохраненную сессию для студента с поддержкой фильтрации по курсу и теме."""
     conn = get_connection()
     cursor = conn.cursor()
+    query = "SELECT * FROM sessions WHERE student_id = ?"
+    params = [student_id]
+    if course_id:
+        query += " AND course_id = ?"
+        params.append(course_id)
     if topic_id:
-        cursor.execute("""
-            SELECT * FROM sessions 
-            WHERE student_id = ? AND topic_id = ? 
-            ORDER BY created_at DESC LIMIT 1
-        """, (student_id, topic_id))
-    else:
-        cursor.execute("""
-            SELECT * FROM sessions 
-            WHERE student_id = ? 
-            ORDER BY created_at DESC LIMIT 1
-        """, (student_id,))
+        resolved = resolve_topic_id(topic_id)
+        query += " AND (topic_id = ? OR topic_id = ?)"
+        params.extend([resolved, topic_id])
+    query += " ORDER BY created_at DESC LIMIT 1"
+    cursor.execute(query, tuple(params))
     row = cursor.fetchone()
     conn.close()
     if not row:
@@ -207,13 +685,21 @@ def get_latest_session_for_student(student_id: str, topic_id: Optional[str] = No
     return dict(row)
 
 
-def get_student_turns(student_id: str, topic_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_student_turns(
+    student_id: str,
+    topic_id: Optional[str] = None,
+    course_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Возвращает реплики диалога студента из последней сессии."""
-    session = get_latest_session_for_student(student_id, topic_id)
+    session = get_latest_session_for_student(student_id, topic_id, course_id)
     if not session:
         return []
     return get_turns(session["session_id"])
 
+
+# =====================================================================
+# АУДИТ СТУДЕНТОВ (STUDENT_AUDITS)
+# =====================================================================
 
 def save_student_audit(
     student_id: str,
@@ -229,38 +715,45 @@ def save_student_audit(
     z_score: float = 0.0,
     zone: str = "NO_SIGNAL",
     extraction_json: Optional[str] = None,
+    course_id: str = "prog_ai_2026",
+    topic_id: str = "week_09_deep_learning",
+    telemetry_clean: bool = True,
+    teacher_decision: Optional[str] = None,
 ):
     """Сохранение или обновление записи аудита студента в SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
+    resolved_topic = resolve_topic_id(topic_id)
     cursor.execute("""
         INSERT OR REPLACE INTO student_audits (
-            student_id, student_name, group_id, in_class_grade, session_status,
+            student_id, course_id, topic_id, student_name, group_id, in_class_grade, session_status,
             turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
-            z_score, zone, extraction_json, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            z_score, zone, extraction_json, telemetry_clean, teacher_decision, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """, (
-        student_id, student_name, group_id, in_class_grade, session_status,
+        student_id, course_id, resolved_topic, student_name, group_id, in_class_grade, session_status,
         turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
-        z_score, zone, extraction_json
+        z_score, zone, extraction_json, 1 if telemetry_clean else 0, teacher_decision
     ))
     conn.commit()
     conn.close()
 
 
 def bulk_save_student_audits(records: List[Dict[str, Any]]):
-    """Массовое сохранение записей студентов в SQLite."""
+    """Массовое сохранение записей студентов в SQLite с поддержкой course_id и topic_id."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.executemany("""
         INSERT OR REPLACE INTO student_audits (
-            student_id, student_name, group_id, in_class_grade, session_status,
+            student_id, course_id, topic_id, student_name, group_id, in_class_grade, session_status,
             turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
-            z_score, zone, extraction_json, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            z_score, zone, extraction_json, telemetry_clean, teacher_decision, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """, [
         (
             r["student_id"],
+            r.get("course_id", "prog_ai_2026"),
+            resolve_topic_id(r.get("topic_id", "week_09_deep_learning")),
             r.get("student_name", r["student_id"]),
             r.get("group_id", "group_1"),
             r["in_class_grade"],
@@ -273,6 +766,8 @@ def bulk_save_student_audits(records: List[Dict[str, Any]]):
             r.get("z_score", 0.0),
             r.get("zone", "NO_SIGNAL"),
             r.get("extraction_json"),
+            1 if r.get("telemetry_clean", True) else 0,
+            r.get("teacher_decision"),
         )
         for r in records
     ])
@@ -280,21 +775,48 @@ def bulk_save_student_audits(records: List[Dict[str, Any]]):
     conn.close()
 
 
-def get_all_student_audits() -> List[Dict[str, Any]]:
-    """Получение всех записей аудита студентов из SQLite."""
+def get_all_student_audits(
+    course_id: Optional[str] = None,
+    topic_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Получение записей аудита студентов из SQLite (с опциональной фильтрацией по курсу и теме)."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM student_audits ORDER BY student_id ASC")
+    query = "SELECT * FROM student_audits WHERE 1=1"
+    params = []
+    if course_id:
+        query += " AND course_id = ?"
+        params.append(course_id)
+    if topic_id:
+        resolved = resolve_topic_id(topic_id)
+        query += " AND (topic_id = ? OR topic_id = ?)"
+        params.extend([resolved, topic_id])
+    query += " ORDER BY student_id ASC"
+    cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
-def get_student_audit(student_id: str) -> Optional[Dict[str, Any]]:
+def get_student_audit(
+    student_id: str,
+    course_id: Optional[str] = None,
+    topic_id: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     """Получение записи аудита конкретного студента из SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM student_audits WHERE student_id = ?", (student_id,))
+    query = "SELECT * FROM student_audits WHERE student_id = ?"
+    params = [student_id]
+    if course_id:
+        query += " AND course_id = ?"
+        params.append(course_id)
+    if topic_id:
+        resolved = resolve_topic_id(topic_id)
+        query += " AND (topic_id = ? OR topic_id = ?)"
+        params.extend([resolved, topic_id])
+    query += " ORDER BY updated_at DESC LIMIT 1"
+    cursor.execute(query, tuple(params))
     row = cursor.fetchone()
     conn.close()
     if not row:
@@ -302,12 +824,29 @@ def get_student_audit(student_id: str) -> Optional[Dict[str, Any]]:
     return dict(row)
 
 
-def delete_student_dialogs(student_id: str):
+def delete_student_dialogs(
+    student_id: str,
+    course_id: Optional[str] = None,
+    topic_id: Optional[str] = None
+):
     """Полное удаление диалоговых сессий и реплик студента из SQLite (для чистого сброса сессии)."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM dialog_turns WHERE session_id IN (SELECT session_id FROM sessions WHERE student_id = ?)", (student_id,))
-    cursor.execute("DELETE FROM sessions WHERE student_id = ?", (student_id,))
+    query = "SELECT session_id FROM sessions WHERE student_id = ?"
+    params = [student_id]
+    if course_id:
+        query += " AND course_id = ?"
+        params.append(course_id)
+    if topic_id:
+        resolved = resolve_topic_id(topic_id)
+        query += " AND (topic_id = ? OR topic_id = ?)"
+        params.extend([resolved, topic_id])
+    cursor.execute(query, tuple(params))
+    sess_ids = [r["session_id"] for r in cursor.fetchall()]
+    if sess_ids:
+        placeholders = ",".join("?" for _ in sess_ids)
+        cursor.execute(f"DELETE FROM dialog_turns WHERE session_id IN ({placeholders})", sess_ids)
+        cursor.execute(f"DELETE FROM sessions WHERE session_id IN ({placeholders})", sess_ids)
     conn.commit()
     conn.close()
 
@@ -316,24 +855,29 @@ def reset_student_in_db(
     student_id: str,
     default_in_class_grade: float = 70.0,
     student_name: Optional[str] = None,
-    group_id: str = "group_1"
+    group_id: str = "group_1",
+    course_id: str = "prog_ai_2026",
+    topic_id: str = "week_09_deep_learning"
 ):
     """
     Сброс студента в SQLite к начальному состоянию без ИИ:
     - Удаляет сессии и реплики из dialog_turns и sessions
     - Сбрасывает оценку в student_audits до очной (G_prof), ai_depth_score=None, rectified_delta=0, z_score=0, zone='NO_SIGNAL', session_status='OPTED_OUT'
     """
-    delete_student_dialogs(student_id)
+    resolved_topic = resolve_topic_id(topic_id)
+    delete_student_dialogs(student_id, course_id=course_id, topic_id=resolved_topic)
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         INSERT OR REPLACE INTO student_audits (
-            student_id, student_name, group_id, in_class_grade, session_status,
+            student_id, course_id, topic_id, student_name, group_id, in_class_grade, session_status,
             turns_count, total_tokens, ai_depth_score, raw_delta, rectified_delta,
-            z_score, zone, extraction_json, updated_at
-        ) VALUES (?, ?, ?, ?, 'OPTED_OUT', 0, 0, NULL, 0.0, 0.0, 0.0, 'NO_SIGNAL', NULL, CURRENT_TIMESTAMP)
+            z_score, zone, extraction_json, telemetry_clean, teacher_decision, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'OPTED_OUT', 0, 0, NULL, 0.0, 0.0, 0.0, 'NO_SIGNAL', NULL, 1, NULL, CURRENT_TIMESTAMP)
     """, (
         student_id,
+        course_id,
+        resolved_topic,
         student_name or student_id,
         group_id,
         default_in_class_grade,
@@ -344,4 +888,3 @@ def reset_student_in_db(
 
 # Инициализируем БД при импорте модуля
 init_db()
-

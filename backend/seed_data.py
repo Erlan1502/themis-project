@@ -239,7 +239,7 @@ def seed_sqlite_dialogs():
         # Проверяем, есть ли уже сессия stud_k в БД
         if not get_session("sess_canonical_stud_k"):
             sess_k_id = "sess_canonical_stud_k"
-            save_session(sess_k_id, "stud_aai_042", "prog_ai_2026", "topic_05_regularization", "COMPLETED")
+            save_session(sess_k_id, "stud_aai_042", "prog_ai_2026", "week_09_deep_learning", "COMPLETED")
             save_turn(
                 session_id=sess_k_id,
                 turn_number=1,
@@ -273,7 +273,7 @@ def seed_sqlite_dialogs():
 
         if not get_session("sess_canonical_stud_015"):
             sess_sofia_id = "sess_canonical_stud_015"
-            save_session(sess_sofia_id, "stud_aai_015", "prog_ai_2026", "topic_05_regularization", "INCOMPLETE_IGNORED")
+            save_session(sess_sofia_id, "stud_aai_015", "prog_ai_2026", "week_09_deep_learning", "INCOMPLETE_IGNORED")
             save_turn(
                 session_id=sess_sofia_id,
                 turn_number=1,
