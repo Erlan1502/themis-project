@@ -2105,7 +2105,13 @@ async def auth_telegram_qr(student_id: str = Query(...)):
 # ОТДАЧА СТАТИКИ И ФРОНТЕНДА
 # =====================================================================
 
-frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "index.html")
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+assets_dir = os.path.join(frontend_dir, "assets")
+frontend_path = os.path.join(frontend_dir, "index.html")
+
+if os.path.exists(assets_dir):
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    app.mount("/frontend/assets", StaticFiles(directory=assets_dir), name="frontend_assets")
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
