@@ -20,8 +20,8 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 def clean_markdown_cell(text: str) -> str:
     """Удаляет громоздкие base64-изображения и HTML-шум из markdown ячеек."""
     # Удаляем base64 data URIs
-    text = re.sub(r'!\[.*?\]\(data:image\/.*?;base64,.*?\)', '[Иллюстрация к лекции]', text)
-    text = re.sub(r'<img\s+src="data:image\/.*?"\s*\/?>', '[Иллюстрация к лекции]', text)
+    text = re.sub(r'!\[.*?\]\(data:[^)]+\)', '[Иллюстрация к лекции]', text)
+    text = re.sub(r'<img\s+src="data:[^"]+"\s*\/?>', '[Иллюстрация к лекции]', text)
     # Нормализуем множественные пустые строки
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()

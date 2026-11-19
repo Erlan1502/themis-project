@@ -341,8 +341,44 @@ class RAGService:
     """Сервис поиска и извлечения контекста силлабуса PAI 2026 для сократического бота."""
 
     def __init__(self):
-        self._weeks = SYLLABUS_WEEKS
-        self._map = WEEKS_BY_ID
+        self._weeks = list(SYLLABUS_WEEKS)
+        self._map = dict(WEEKS_BY_ID)
+        self.load_from_db()
+
+    def load_from_db(self):
+        """Загружает динамически проиндексированные недели и глоссарии из SQLite."""
+        try:
+            from backend.database import get_connection
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='syllabus_weeks'")
+            if not cursor.fetchone():
+                conn.close()
+                return
+
+            cursor.execute("""
+                SELECT week_number, topic_id, title, topic_name, initial_prompt, chunks_count
+                FROM syllabus_weeks
+                ORDER BY week_number ASC
+            """)
+            rows = cursor.fetchall()
+            for row in rows:
+                topic_id = row["topic_id"]
+                cursor.execute("SELECT term FROM lecture_glossary WHERE topic_id = ?", (topic_id,))
+                glossary = [g["term"] for g in cursor.fetchall()]
+
+                self.register_dynamic_week(
+                    topic_id=topic_id,
+                    week_number=row["week_number"],
+                    title=row["title"],
+                    topic_name=row["topic_name"],
+                    initial_prompt=row["initial_prompt"],
+                    glossary=glossary,
+                    slides_count=row["chunks_count"]
+                )
+            conn.close()
+        except Exception:
+            pass
 
     def get_all_weeks(self) -> List[Dict[str, Any]]:
         """Возвращает список всех 10 недель для селектора на фронтенде."""
@@ -404,7 +440,7 @@ class RAGService:
         self._map[topic_id] = week_data
         return week_data
 
-    def retrieve_chunks(self, query: str, topic_id: str, top_k: int = 2) -> List[Dict[str, Any]]:
+    def retrieve_chunks(self, query: str, topic_id: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """
         Поиск релевантных фрагментов для контекстного заземления:
         Сначала опрашивает HNSW векторную базу ChromaDB по слайдам лекции.

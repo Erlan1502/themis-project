@@ -118,12 +118,14 @@ class ThemisVectorStore:
                 "has_code": 1 if slide.get("has_code") else 0,
             })
 
-        # Добавляем или обновляем в ChromaDB
-        self.collection.upsert(
-            ids=ids,
-            documents=documents,
-            metadatas=metadatas
-        )
+        # Добавляем или обновляем в ChromaDB батчами по 100 чанков
+        batch_size = 100
+        for i in range(0, len(ids), batch_size):
+            self.collection.upsert(
+                ids=ids[i:i+batch_size],
+                documents=documents[i:i+batch_size],
+                metadatas=metadatas[i:i+batch_size]
+            )
         logger.info(f"Проиндексировано {len(ids)} слайдов для темы {topic_id}")
         return len(ids)
 
@@ -131,7 +133,7 @@ class ThemisVectorStore:
         self,
         query: str,
         topic_id: Optional[str] = None,
-        top_k: int = 2
+        top_k: int = 3
     ) -> List[Dict[str, Any]]:
         """
         Поиск наиболее релевантных слайдов лекции по HNSW индексу.
