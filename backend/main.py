@@ -353,8 +353,24 @@ async def lifespan(app: FastAPI):
     reset_database(load_from_db_if_exists=True)
     # Фоновый прогрев модели BAAI/bge-m3 и векторного хранилища в ThreadPool
     asyncio.create_task(asyncio.to_thread(vector_store.warmup))
-    yield
-    # Очистка при завершении
+
+    # Запуск фонового Telegram Long Polling при наличии реального токена
+    telegram_polling_task = None
+    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN not in ("dev", "test"):
+        logger.info("Запуск фоновой службы Telegram Long Polling (токен настроен)...")
+        telegram_polling_task = asyncio.create_task(telegram_bot.start_polling())
+
+    try:
+        yield
+    finally:
+        # Корректная остановка при завершении приложения
+        telegram_bot.stop_polling()
+        if telegram_polling_task:
+            telegram_polling_task.cancel()
+            try:
+                await telegram_polling_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 app = FastAPI(

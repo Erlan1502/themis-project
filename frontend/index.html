@@ -107,13 +107,16 @@
           </button>
 
           <div id="user-profile-badge" class="hidden flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1 text-xs">
-            <span id="badge-role-icon">🎓</span>
-            <div class="leading-tight">
+            <span id="badge-role-icon">👤</span>
+            <div class="leading-tight flex items-baseline space-x-1">
               <span id="badge-user-name" class="font-semibold text-slate-200 block truncate max-w-[130px]">Студент К.</span>
-              <span id="badge-user-role" class="text-[10px] text-violet-400 font-mono">stud_01</span>
+              <span id="badge-user-role" class="text-[10px] text-violet-400 font-mono">(ИИ-201)</span>
             </div>
             <span id="badge-tg-status" class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30">TG: ⏳</span>
-            <button onclick="logoutUser()" title="Выйти" class="text-slate-400 hover:text-red-400 font-bold ml-1 cursor-pointer">✕</button>
+            <button onclick="logoutUser()" title="Выйти из системы" class="ml-1.5 px-2 py-0.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800/40 rounded-lg text-rose-300 hover:text-white text-[11px] font-medium transition cursor-pointer flex items-center space-x-1">
+              <span>✕</span>
+              <span>Выйти</span>
+            </button>
           </div>
         </div>
 
@@ -202,10 +205,38 @@
         </div>
       </div>
 
-      <!-- Telegram Binding Card for Student (One-Time QR Deep Link) -->
-      <div id="student-telegram-card" class="transition-all duration-300">
-        <!-- Rendered dynamically by renderTelegramBindingCard() -->
+      <!-- Guest Guard Banner (показывается ТОЛЬКО когда пользователь НЕ авторизован) -->
+      <div id="student-guest-guard" class="bg-gradient-to-r from-slate-950 via-violet-950/40 to-slate-900 border border-violet-500/40 rounded-2xl p-6 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-5 text-center sm:text-left transition-all duration-300">
+        <div class="flex items-center space-x-4">
+          <div class="w-14 h-14 rounded-2xl bg-violet-600/20 border border-violet-500/40 text-violet-300 flex items-center justify-center font-bold text-3xl shrink-0 shadow-lg shadow-violet-500/20">
+            🔒
+          </div>
+          <div>
+            <div class="flex items-center justify-center sm:justify-start space-x-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-violet-400 font-mono">Цифровой пандус Themis</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold">Требуется авторизация</span>
+            </div>
+            <h3 class="text-base font-bold text-white mt-1">
+              🔒 Для доступа к цифровому пандусу и привязке Telegram выполните вход
+            </h3>
+            <p class="text-xs text-slate-300 mt-1 max-w-xl">
+              Сократический тьютор и персональный QR-код привязки Telegram доступны авторизованным студентам группы ИИ-201 для психометрической защиты вашей оценки (Zero Downward Penalty).
+            </p>
+          </div>
+        </div>
+        <button onclick="openLoginModal()" class="px-5 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-500/30 transition transform hover:-translate-y-0.5 cursor-pointer flex items-center space-x-2 shrink-0">
+          <span class="text-base">🔑</span>
+          <span>Войти в систему</span>
+        </button>
       </div>
+
+      <!-- Authorized Student Content Container (скрыт для неавторизованных) -->
+      <div id="student-authorized-content" class="space-y-6 hidden">
+
+        <!-- Telegram Binding Card for Student (One-Time QR Deep Link) -->
+        <div id="student-telegram-card" class="transition-all duration-300">
+          <!-- Rendered dynamically by renderTelegramBindingCard() -->
+        </div>
 
       <!-- Group 1 Student Selector Bar -->
       <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -422,6 +453,8 @@
         </div>
 
       </div>
+
+      </div><!-- /student-authorized-content -->
 
     </div>
 
@@ -666,11 +699,11 @@
       <div class="space-y-2">
         <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 font-mono">⚡ Быстрый вход (Сцена / Демо):</div>
         <div class="grid grid-cols-2 gap-2">
-          <button type="button" onclick="quickLogin('stud_01', 'themis2026')" class="py-2 px-2.5 bg-violet-950/60 hover:bg-violet-900/80 border border-violet-500/40 rounded-xl text-left transition flex items-center space-x-2 cursor-pointer">
-            <span class="text-lg">🎓</span>
+          <button type="button" onclick="quickLogin('stud_01', 'themis2026')" class="py-2.5 px-3 bg-violet-950/70 hover:bg-violet-900 border border-violet-500/50 rounded-xl text-left transition flex items-center space-x-2.5 cursor-pointer shadow-md">
+            <span class="text-xl">🎓</span>
             <div class="leading-tight">
-              <div class="text-xs font-bold text-violet-200">Студент К.</div>
-              <div class="text-[10px] text-violet-400 font-mono">stud_01</div>
+              <div class="text-xs font-bold text-violet-200">Войти как Студент К.</div>
+              <div class="text-[10px] text-violet-400 font-mono">stud_01 • Группа ИИ-201</div>
             </div>
           </button>
           <button type="button" onclick="quickLogin('teacher', 'themis_prof_2026')" class="py-2 px-2.5 bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 rounded-xl text-left transition flex items-center space-x-2 cursor-pointer">
@@ -909,7 +942,9 @@
       await loadCourses();
       await loadSyllabusWeeks();
       await initStudentSelector();
-      await loadStudentSession(currentStudentId);
+      if (currentUser && currentUser.student_id) {
+        await loadStudentSession(currentUser.student_id);
+      }
       await refreshDashboard();
       initAuditStream();
       renderTelegramBindingCard();
@@ -2673,6 +2708,8 @@
               currentStudentId = currentUser.student_id;
               const sel = document.getElementById('student-selector');
               if (sel) sel.value = currentStudentId;
+              await loadStudentSession(currentStudentId);
+              renderTelegramBindingCard();
             }
           } else {
             localStorage.removeItem('themis_auth_token');
@@ -2791,13 +2828,19 @@
       if (currentUser && currentUser.token) {
         if (btnOpen) btnOpen.classList.add('hidden');
         if (badge) badge.classList.remove('hidden');
-        if (nameEl) nameEl.textContent = currentUser.display_name || currentUser.username;
-        if (roleEl) roleEl.textContent = currentUser.role === 'teacher' ? 'Преподаватель' : (currentUser.student_id || currentUser.username);
-        if (iconEl) iconEl.textContent = currentUser.role === 'teacher' ? '👩‍🏫' : '🎓';
-        if (tgEl) {
-          if (currentUser.role === 'teacher') {
-            tgEl.classList.add('hidden');
-          } else {
+
+        if (currentUser.role === 'teacher') {
+          if (iconEl) iconEl.textContent = '👩‍🏫';
+          if (nameEl) nameEl.textContent = currentUser.display_name || 'Белощицкая С.';
+          if (roleEl) roleEl.textContent = 'Преподаватель';
+          if (tgEl) tgEl.classList.add('hidden');
+        } else {
+          if (iconEl) iconEl.textContent = '👤';
+          const rawName = currentUser.display_name || 'Студент К.';
+          const cleanName = rawName.includes('(') ? rawName.split('(')[0].trim() : rawName;
+          if (nameEl) nameEl.textContent = cleanName;
+          if (roleEl) roleEl.textContent = '(ИИ-201)';
+          if (tgEl) {
             tgEl.classList.remove('hidden');
             if (currentUser.is_telegram_linked) {
               tgEl.textContent = currentUser.telegram_username ? `TG: ${currentUser.telegram_username}` : 'TG: ✅';
@@ -2816,9 +2859,26 @@
 
     async function renderTelegramBindingCard() {
       const container = document.getElementById('student-telegram-card');
+      const guard = document.getElementById('student-guest-guard');
+      const authContent = document.getElementById('student-authorized-content');
+
+      // 1. Защита: Если пользователь НЕ авторизован — блокируем QR и сессию
+      if (!currentUser || !currentUser.token) {
+        if (qrPollingTimer) clearInterval(qrPollingTimer);
+        if (qrCountdownTimer) clearInterval(qrCountdownTimer);
+        if (guard) guard.classList.remove('hidden');
+        if (authContent) authContent.classList.add('hidden');
+        if (container) container.innerHTML = '';
+        return;
+      }
+
+      // 2. Пользователь авторизован — открываем доступ
+      if (guard) guard.classList.add('hidden');
+      if (authContent) authContent.classList.remove('hidden');
+
       if (!container) return;
 
-      const targetSid = (currentUser && currentUser.student_id) || currentStudentId;
+      const targetSid = currentUser.student_id || currentStudentId;
       let isLinked = false;
       let tgUsername = null;
 
@@ -2832,6 +2892,11 @@
             const d = await res.json();
             isLinked = d.telegram_id !== null && d.telegram_id !== undefined;
             tgUsername = d.telegram_username || (d.telegram_id ? `ID: ${d.telegram_id}` : null);
+            if (isLinked && currentUser.student_id === targetSid) {
+              currentUser.is_telegram_linked = true;
+              currentUser.telegram_username = tgUsername;
+              updateAuthUI();
+            }
           }
         } catch(e) {}
       }
@@ -2840,7 +2905,7 @@
         if (qrPollingTimer) clearInterval(qrPollingTimer);
         if (qrCountdownTimer) clearInterval(qrCountdownTimer);
         container.innerHTML = `
-          <div class="bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div id="student-qr-card" class="bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div class="flex items-center space-x-3">
               <div class="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-bold text-xl shrink-0">
                 ✅
@@ -2855,14 +2920,14 @@
                 </p>
               </div>
             </div>
-            <button onclick="requestNewTelegramQr('${targetSid}')" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition cursor-pointer self-start sm:self-auto shrink-0">
+            <button onclick="fetchTelegramQrCode('${targetSid}')" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-medium border border-slate-700 transition cursor-pointer self-start sm:self-auto shrink-0">
               🔄 Сменить привязку
             </button>
           </div>
         `;
       } else {
         container.innerHTML = `
-          <div class="bg-gradient-to-r from-indigo-950/60 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-2xl p-4 shadow-xl space-y-3">
+          <div id="student-qr-card" class="bg-gradient-to-r from-indigo-950/60 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-2xl p-4 shadow-xl space-y-3">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div class="flex items-start space-x-3">
                 <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center font-bold text-xl shrink-0">
@@ -2878,7 +2943,7 @@
                   </p>
                 </div>
               </div>
-              <button onclick="requestNewTelegramQr('${targetSid}')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow transition cursor-pointer flex items-center space-x-1.5 self-start sm:self-auto shrink-0">
+              <button onclick="fetchTelegramQrCode('${targetSid}')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow transition cursor-pointer flex items-center space-x-1.5 self-start sm:self-auto shrink-0">
                 <span>⚡</span>
                 <span>Получить QR-код</span>
               </button>
@@ -2905,11 +2970,41 @@
             </div>
           </div>
         `;
-        requestNewTelegramQr(targetSid);
+        // Генерация QR-кода строго для авторизованного студента
+        if (currentUser && currentUser.role === 'student' && currentUser.student_id) {
+          fetchTelegramQrCode(currentUser.student_id);
+        }
       }
     }
 
-    async function requestNewTelegramQr(sId) {
+    async function fetchTelegramQrCode(sId) {
+      if (!currentUser || currentUser.role !== 'student') {
+        console.warn('[QR] Генерация QR отклонена: доступно только авторизованным студентам.');
+        return;
+      }
+      const sid = currentUser.student_id || sId;
+      try {
+        const res = await fetch(`/api/v1/auth/telegram-qr?student_id=${sid}`);
+        if (!res.ok) throw new Error('Ошибка генерации QR');
+        const data = await res.json();
+
+        const qrContainer = document.getElementById('student-qr-container');
+        if (qrContainer) qrContainer.classList.remove('hidden');
+
+        const qrImg = document.getElementById('binding-qr-img');
+        if (qrImg) qrImg.src = data.qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(data.deep_link)}`;
+
+        const btnLink = document.getElementById('binding-deep-link-btn');
+        if (btnLink) btnLink.href = data.deep_link;
+
+        startBindingTimer(data.expires_in || 900);
+        startBindingStatusPolling(sid);
+      } catch (err) {
+        console.error('QR generation error:', err);
+      }
+    }
+
+    const requestNewTelegramQr = fetchTelegramQrCode;
       const sid = sId || (currentUser && currentUser.student_id) || currentStudentId;
       try {
         const res = await fetch(`/api/v1/auth/telegram-qr?student_id=${sid}`);

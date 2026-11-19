@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Themis Project v2.0 — Design Sheets Catalog</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 0;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: #0b0f19;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .sheet-page {
+      width: 297mm;
+      height: 210mm;
+      page-break-after: always;
+      page-break-inside: avoid;
+      overflow: hidden;
+      position: relative;
+      background: #090d16;
+      display: flex;
+      flex-direction: column;
+      padding: 8mm 10mm 6mm 10mm;
+    }
+    .sheet-page:last-child {
+      page-break-after: auto;
+    }
+    /* Custom Scrollbar for Previews */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================================================================= -->
+  <!-- ЛИСТ 1: ЭКРАН СТУДЕНТА — ГОСТЕВОЕ СОСТОЯНИЕ (ТРЕБУЕТСЯ ВХОД) -->
+  <!-- ================================================================= -->
+  <div class="sheet-page">
+    <!-- Sheet Title Header -->
+    <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+      <div class="flex items-center space-x-2">
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-violet-950 text-violet-300 border border-violet-500/40">ЛИСТ 01 / 08</span>
+        <h2 class="text-xs font-bold text-white tracking-wide uppercase">Экран студента — Гостевое состояние (Guest Guard)</h2>
+      </div>
+      <div class="text-[10px] text-slate-400 font-mono">
+        Инвариант: Неавторизованный пользователь НЕ видит QR-код и сессию студента
+      </div>
+    </div>
+
+    <!-- Themis App Header (Navbar) -->
+    <div class="mt-2 h-11 px-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between shrink-0 shadow">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center font-black text-white text-sm shadow">Θ</div>
+        <div>
+          <span class="font-bold text-xs text-white">THEMIS PROJECT</span>
+          <span class="ml-1 text-[9px] px-1.5 py-0.2 rounded bg-violet-500/20 text-violet-300 font-mono border border-violet-500/30">v2.0</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+        <span class="px-3 py-1 text-[11px] font-semibold rounded-md bg-violet-600 text-white shadow">🎓 Студент: Цифровой пандус</span>
+        <span class="px-3 py-1 text-[11px] font-medium text-slate-400">📊 Консоль преподавателя</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <!-- Auth Button: Guest State -->
+        <button class="px-3 py-1 text-[11px] font-semibold rounded-lg bg-violet-600/30 hover:bg-violet-600 text-violet-200 border border-violet-500/40 flex items-center space-x-1.5 shadow">
+          <span>🔐</span>
+          <span>Войти</span>
+        </button>
+        <span class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-indigo-600 text-white">📱 Telegram Mini App</span>
+      </div>
+    </div>
+
+    <!-- Syllabus Context Bar -->
+    <div class="mt-2 px-3 py-1.5 bg-slate-950/60 border border-slate-800/80 rounded-xl flex items-center justify-between text-[11px] text-slate-300 shrink-0">
+      <div class="flex items-center space-x-3">
+        <span class="font-semibold text-slate-200">🏛️ Astana IT University</span>
+        <span class="text-slate-500">|</span>
+        <span>Курс: <strong>Программирование для ИИ (PAI 2026)</strong></span>
+        <span class="text-slate-500">|</span>
+        <span>Неделя 9: <strong>Глубокое обучение и регуляризация нейросетей</strong></span>
+      </div>
+      <div class="text-violet-400 font-mono font-medium">Белощицкая С., профессор</div>
+    </div>
+
+    <!-- Curb-Cut UDL Banner -->
+    <div class="mt-2.5 bg-gradient-to-r from-violet-950/70 via-indigo-950/60 to-slate-900 border border-violet-500/30 rounded-xl p-3 shadow shrink-0 flex items-start space-x-3">
+      <div class="text-xl">♿</div>
+      <div class="flex-1">
+        <div class="flex items-center space-x-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-violet-400 font-mono">Принцип пандуса (UDL Optional Affordance)</span>
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span class="text-[10px] text-emerald-400 font-medium">Окно рефлексии открыто</span>
+        </div>
+        <p class="text-xs font-medium text-slate-200 mt-0.5">
+          Добровольная сессия Themis Project. Не снижает вашу очную оценку и служит исключительно для глубокого раскрытия вашего понимания без публичного стресса.
+        </p>
+        <div class="text-[10px] text-slate-400 mt-1 flex space-x-4">
+          <span>🛡️ <strong class="text-slate-300">Zero Downward Penalty:</strong> Оценка преподавателя неприкосновенна</span>
+          <span>⏱️ Осталось времени: <strong class="font-mono text-amber-400">44:59</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- GUEST GUARD BANNER (Активный элемент экрана) -->
+    <div class="mt-3 bg-gradient-to-r from-slate-950 via-violet-950/50 to-slate-900 border border-violet-500/50 rounded-2xl p-5 shadow-2xl flex items-center justify-between gap-4 shrink-0">
+      <div class="flex items-center space-x-4">
+        <div class="w-12 h-12 rounded-2xl bg-violet-600/25 border border-violet-500/50 text-violet-300 flex items-center justify-center font-bold text-2xl shrink-0 shadow-lg shadow-violet-500/20">
+          🔒
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-violet-400 font-mono">Цифровой пандус Themis</span>
+            <span class="px-2 py-0.5 rounded text-[9px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold">Требуется авторизация</span>
+          </div>
+          <h3 class="text-sm font-bold text-white mt-0.5">
+            🔒 Для доступа к цифровому пандусу и привязке Telegram выполните вход
+          </h3>
+          <p class="text-xs text-slate-300 mt-0.5">
+            Сократический тьютор и персональный QR-код привязки доступны авторизованным студентам группы ИИ-201 для психометрической защиты вашей оценки (Zero Downward Penalty).
+          </p>
+        </div>
+      </div>
+      <button class="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-500/30 flex items-center space-x-2 shrink-0">
+        <span class="text-sm">🔑</span>
+        <span>Войти в систему</span>
+      </button>
+    </div>
+
+    <!-- Blurred Locked Content Preview -->
+    <div class="mt-3 flex-1 bg-slate-950/40 border border-slate-800/60 rounded-2xl p-4 relative overflow-hidden flex flex-col items-center justify-center text-center">
+      <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-2">
+        <div class="w-10 h-10 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-lg">🛡️</div>
+        <div class="text-xs font-bold text-slate-200">Доступ к диалогу и привязке Telegram закрыт</div>
+        <p class="text-[11px] text-slate-400 max-w-md">
+          Авторизуйтесь под своей учетной записью студента группы ИИ-201, чтобы разблокировать персональный сократический диалог и QR-код мобильного бота.
+        </p>
+      </div>
+      <!-- Ghost mockup behind blur -->
+      <div class="w-full opacity-20 filter blur-xs space-y-2">
+        <div class="h-8 bg-slate-800 rounded-lg w-full"></div>
+        <div class="h-32 bg-slate-800 rounded-lg w-full"></div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================= -->
+  <!-- ЛИСТ 2: ЭКРАН СТУДЕНТА АВТОРИЗОВАННЫЙ — QR-КОД, ТАЙМЕР, UDL -->
+  <!-- ================================================================= -->
+  <div class="sheet-page">
+    <!-- Sheet Title Header -->
+    <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+      <div class="flex items-center space-x-2">
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">ЛИСТ 02 / 08</span>
+        <h2 class="text-xs font-bold text-white tracking-wide uppercase">Экран студента авторизованный — Персональный QR-код привязки</h2>
+      </div>
+      <div class="text-[10px] text-emerald-400 font-mono">
+        Статус: Студент К. (stud_042) верифицирован • One-Time Deep Link активен
+      </div>
+    </div>
+
+    <!-- Themis App Header (Navbar: Logged In as Student K) -->
+    <div class="mt-2 h-11 px-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between shrink-0 shadow">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center font-black text-white text-sm shadow">Θ</div>
+        <div>
+          <span class="font-bold text-xs text-white">THEMIS PROJECT</span>
+          <span class="ml-1 text-[9px] px-1.5 py-0.2 rounded bg-violet-500/20 text-violet-300 font-mono border border-violet-500/30">v2.0</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+        <span class="px-3 py-1 text-[11px] font-semibold rounded-md bg-violet-600 text-white shadow">🎓 Студент: Цифровой пандус</span>
+        <span class="px-3 py-1 text-[11px] font-medium text-slate-400">📊 Консоль преподавателя</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <!-- User Badge: Authorized Student K -->
+        <div class="flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1 text-xs">
+          <span>👤</span>
+          <div class="leading-tight flex items-baseline space-x-1">
+            <span class="font-semibold text-slate-200">Студент К.</span>
+            <span class="text-[10px] text-violet-400 font-mono">(ИИ-201)</span>
+          </div>
+          <span class="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30">TG: ⏳</span>
+          <button class="ml-1.5 px-2 py-0.5 bg-rose-950/60 border border-rose-800/40 rounded-lg text-rose-300 text-[10px] font-medium">Выйти</button>
+        </div>
+        <span class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-indigo-600 text-white">📱 TMA</span>
+      </div>
+    </div>
+
+    <!-- Telegram Binding Card (Active QR Code) -->
+    <div class="mt-2.5 bg-gradient-to-r from-indigo-950/70 via-slate-900 to-slate-950 border border-indigo-500/40 rounded-2xl p-3.5 shadow-xl shrink-0 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center font-bold text-lg">📱</div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-indigo-400 font-mono">Привязка Telegram (One-Time Deep Link)</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold">Ожидание сканирования</span>
+            </div>
+            <p class="text-[11px] text-slate-300 mt-0.5">
+              Отсканируйте персональный QR-код для привязки мобильного Telegram к ведомости группы.
+            </p>
+          </div>
+        </div>
+        <div class="text-[11px] font-mono text-amber-400 bg-amber-950/40 border border-amber-500/30 px-3 py-1 rounded-xl">
+          ⏱️ Срок действия токена: <strong>14:48</strong>
+        </div>
+      </div>
+
+      <div class="pt-2 border-t border-slate-800/80 flex items-center space-x-5">
+        <div class="p-2 bg-white rounded-xl shadow-2xl shrink-0 w-28 h-28">
+          <svg viewBox="0 0 100 100" class="w-full h-full text-slate-950" fill="currentColor">
+      <!-- Outer finder patterns -->
+      <rect x="5" y="5" width="28" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="6"/>
+      <rect x="11" y="11" width="16" height="16" rx="2" fill="currentColor"/>
+      <rect x="67" y="5" width="28" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="6"/>
+      <rect x="73" y="11" width="16" height="16" rx="2" fill="currentColor"/>
+      <rect x="5" y="67" width="28" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="6"/>
+      <rect x="11" y="73" width="16" height="16" rx="2" fill="currentColor"/>
+      <!-- Timing patterns & Data modules -->
+      <rect x="37" y="10" width="5" height="5"/>
+      <rect x="47" y="10" width="5" height="5"/>
+      <rect x="57" y="10" width="5" height="5"/>
+      <rect x="37" y="20" width="5" height="5"/>
+      <rect x="47" y="20" width="5" height="5"/>
+      <rect x="57" y="20" width="5" height="5"/>
+      <rect x="10" y="37" width="5" height="5"/>
+      <rect x="10" y="47" width="5" height="5"/>
+      <rect x="10" y="57" width="5" height="5"/>
+      <rect x="20" y="37" width="5" height="5"/>
+      <rect x="20" y="57" width="5" height="5"/>
+      <rect x="37" y="37" width="26" height="26" rx="4" fill="#6366f1"/>
+      <text x="50" y="55" font-family="sans-serif" font-weight="900" font-size="16" fill="white" text-anchor="middle">Θ</text>
+      <rect x="67" y="37" width="6" height="6"/>
+      <rect x="77" y="37" width="6" height="6"/>
+      <rect x="87" y="37" width="6" height="6"/>
+      <rect x="67" y="47" width="6" height="6"/>
+      <rect x="87" y="47" width="6" height="6"/>
+      <rect x="67" y="57" width="6" height="6"/>
+      <rect x="77" y="57" width="6" height="6"/>
+      <rect x="37" y="67" width="6" height="6"/>
+      <rect x="47" y="67" width="6" height="6"/>
+      <rect x="57" y="67" width="6" height="6"/>
+      <rect x="37" y="77" width="6" height="6"/>
+      <rect x="57" y="77" width="6" height="6"/>
+      <rect x="37" y="87" width="6" height="6"/>
+      <rect x="47" y="87" width="6" height="6"/>
+      <rect x="57" y="87" width="6" height="6"/>
+      <rect x="67" y="67" width="6" height="6"/>
+      <rect x="77" y="77" width="6" height="6"/>
+      <rect x="87" y="87" width="6" height="6"/>
+      <rect x="77" y="67" width="6" height="6"/>
+      <rect x="67" y="87" width="6" height="6"/>
+    </svg>
+        </div>
+        <div class="flex-1 space-y-2">
+          <div class="text-xs text-slate-300 leading-relaxed">
+            Наведите камеру смартфона на QR-код или нажмите кнопку прямого перехода. В открывшемся боте <strong>@themis_exam_demo_bot</strong> нажмите кнопку <strong>Начать</strong> (<code class="text-indigo-300">/start</code>).
+          </div>
+          <div class="flex items-center space-x-3">
+            <a href="#" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow inline-flex items-center space-x-1.5">
+              <span>🚀</span>
+              <span>Открыть в Telegram</span>
+            </a>
+            <span class="text-[11px] text-slate-400 font-mono">
+              Deep link: <code class="text-slate-300">https://t.me/themis_exam_demo_bot?start=bind_a8f93e12c401</code>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Student Cohort Selector Bar (Group 1 - 20 Students) -->
+    <div class="mt-2.5 bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between text-xs shrink-0">
+      <div class="flex items-center space-x-2.5">
+        <span class="text-lg">👥</span>
+        <span class="font-bold text-white uppercase tracking-wider font-mono text-[11px]">Группа 1 (ИИ-201):</span>
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-violet-950 text-violet-300 border border-violet-500/40">20 студентов</span>
+        <span class="text-slate-400">|</span>
+        <span class="text-slate-300">Текущий студент: <strong class="text-white">Студент К. (stud_aai_042)</strong></span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="px-2.5 py-1 rounded bg-slate-900 border border-violet-500/40 text-violet-200 font-mono text-[11px]">Очная оценка: 70.0</span>
+        <button class="px-2.5 py-1 bg-rose-950/60 border border-rose-800/40 rounded-lg text-rose-300 text-[11px] font-semibold">↺ Откатить</button>
+        <button class="px-2.5 py-1 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 text-[11px] font-semibold">🔄 Очистить чат</button>
+      </div>
+    </div>
+
+    <!-- Socratic Dialogue Preview Section -->
+    <div class="mt-2.5 flex-1 bg-slate-950 rounded-2xl border border-slate-800 p-4 flex flex-col justify-between overflow-hidden shadow-xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <div class="flex items-center space-x-2">
+          <div class="w-6 h-6 rounded bg-violet-600/30 text-violet-300 flex items-center justify-center text-xs font-bold">Q</div>
+          <span class="text-xs font-semibold text-white">Сократический тьютор Themis (Qwen3.5 / Gemini)</span>
+        </div>
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-900 text-slate-300 border border-slate-700">Шаг 0/3 (Готов к диалогу)</span>
+      </div>
+      <div class="flex items-start space-x-3 my-auto">
+        <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-xs font-bold shrink-0">AI</div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3 text-xs text-slate-200 max-w-xl leading-relaxed">
+          Здравствуйте! В рамках 9-й недели курса мы изучаем проблему переобучения в глубоких сетях. Поясните, почему возникает ко-адаптация весов и как она проявляется при валидации?
+        </div>
+      </div>
+      <div class="flex items-center space-x-2 pt-2 border-t border-slate-800">
+        <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-500">
+          Напишите ваши рассуждения по теме занятия (без спешки)...
+        </div>
+        <button class="px-4 py-2 bg-violet-600 text-white rounded-xl text-xs font-bold shadow">Отправить</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================= -->
+  <!-- ЛИСТ 3: ЭКРАН СТУДЕНТА — СОКРАТИЧЕСКИЙ ДИАЛОГ И RAG ЦИТИРОВАНИЕ -->
+  <!-- ================================================================= -->
+  <div class="sheet-page">
+    <!-- Sheet Title Header -->
+    <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+      <div class="flex items-center space-x-2">
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-violet-950 text-violet-300 border border-violet-500/40">ЛИСТ 03 / 08</span>
+        <h2 class="text-xs font-bold text-white tracking-wide uppercase">Экран студента — Сократический диалог (3 шага) и RAG-цитирование</h2>
+      </div>
+      <div class="text-[10px] text-violet-400 font-mono">
+        Статус: Шаг 3/3 • Экстракция доказательств понимания (Evidence-First)
+      </div>
+    </div>
+
+    <!-- Main Dialogue Grid (2 Columns: Chat & Cognition Radar) -->
+    <div class="mt-2.5 flex-1 grid grid-cols-3 gap-4 overflow-hidden">
+      <!-- Left 2 Cols: Chat Stream Container -->
+      <div class="col-span-2 bg-slate-950 rounded-2xl border border-slate-800 flex flex-col justify-between shadow-2xl p-3.5 overflow-hidden">
+        <!-- Chat Header -->
+        <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+          <div class="flex items-center space-x-2">
+            <span class="w-6 h-6 rounded-md bg-violet-600/20 border border-violet-500/30 text-violet-400 flex items-center justify-center font-bold text-xs">Q</span>
+            <div>
+              <span class="text-xs font-bold text-white">Сократический тьютор</span>
+              <span class="text-[10px] text-slate-400 ml-1">Неделя 9: Глубокое обучение и регуляризация</span>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-violet-950 text-violet-300 border border-violet-500/40 font-bold">
+            Шаг 3/3 (AUDITING / HIGH)
+          </span>
+        </div>
+
+        <!-- Chat History (3 Turns) -->
+        <div class="my-2 space-y-2 overflow-y-auto pr-1 text-xs leading-relaxed">
+          <!-- Turn 1: AI & Student -->
+          <div class="flex items-start space-x-2">
+            <div class="w-6 h-6 rounded-full bg-violet-600 text-[10px] font-bold flex items-center justify-center shrink-0">AI</div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-slate-200">
+              Поясните, в чем заключается фундаментальная причина ко-адаптации весов нейросети?
+            </div>
+          </div>
+          <div class="flex items-start justify-end space-x-2">
+            <div class="bg-violet-950/50 border border-violet-500/40 rounded-xl p-2.5 text-violet-100 max-w-lg">
+              Веса подстраиваются под случайный шум в обучающей выборке, формируя взаимные зависимости между нейронами вместо независимых устойчивых признаков.
+            </div>
+            <div class="w-6 h-6 rounded-full bg-slate-800 text-[10px] font-bold flex items-center justify-center shrink-0">К.</div>
+          </div>
+
+          <!-- Turn 2: AI & Student -->
+          <div class="flex items-start space-x-2">
+            <div class="w-6 h-6 rounded-full bg-violet-600 text-[10px] font-bold flex items-center justify-center shrink-0">AI</div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-slate-200">
+              Как метод Dropout предотвращает этот эффект, и что происходит с весами при инференсе?
+            </div>
+          </div>
+          <div class="flex items-start justify-end space-x-2">
+            <div class="bg-violet-950/50 border border-violet-500/40 rounded-xl p-2.5 text-violet-100 max-w-lg">
+              При обучении каждый нейрон обнуляется с вероятностью p, что заставляет нейроны обучаться независимо. На этапе инференса все веса масштабируются на (1 - p).
+            </div>
+            <div class="w-6 h-6 rounded-full bg-slate-800 text-[10px] font-bold flex items-center justify-center shrink-0">К.</div>
+          </div>
+
+          <!-- Turn 3: Student Synthesis (Canonical Evidence) -->
+          <div class="flex items-start justify-end space-x-2">
+            <div class="bg-gradient-to-r from-violet-950/80 to-indigo-950/70 border border-violet-400 rounded-xl p-2.5 text-white max-w-lg shadow-lg">
+              <span class="text-[9px] uppercase tracking-wider font-mono text-violet-300 font-bold block mb-0.5">Синтез понятий (Extended Abstract):</span>
+              Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?
+            </div>
+            <div class="w-6 h-6 rounded-full bg-violet-600 text-[10px] font-bold flex items-center justify-center shrink-0 ring-2 ring-violet-400">К.</div>
+          </div>
+        </div>
+
+        <!-- Input Bar with Telemetry -->
+        <div class="pt-2 border-t border-slate-800 shrink-0">
+          <div class="flex items-center justify-between text-[10px] text-slate-400 font-mono mb-1">
+            <span>Телеметрия ввода: <strong>24.2 сек</strong> • Вставки (Paste): <strong>0</strong> • Анти-дубликат: <strong>0.11 (Уникально)</strong></span>
+            <span class="text-emerald-400">✓ Защита от накрутки пройдена</span>
+          </div>
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-2 text-xs text-slate-400 flex justify-between items-center">
+            <span>Диалог завершен. Идет расчет психометрического ядра ThemisMathEngine...</span>
+            <span class="animate-spin text-violet-400">⚙️</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right 1 Col: SOLO Taxonomy & RAG Citations Panel -->
+      <div class="space-y-3 flex flex-col justify-between">
+        <!-- SOLO Taxonomy Radar Card -->
+        <div class="bg-slate-950 rounded-2xl border border-slate-800 p-3 shadow-xl">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-300 font-mono">Когнитивная глубина (SOLO)</span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono bg-purple-950 text-purple-300 border border-purple-500/40">Level 4</span>
+          </div>
+          <svg viewBox="0 0 200 120" class="w-full h-24 select-none">
+      <!-- Steps Bar -->
+      <rect x="10" y="75" width="40" height="10" rx="3" fill="#3b82f6"/>
+      <rect x="55" y="60" width="40" height="25" rx="3" fill="#06b6d4"/>
+      <rect x="100" y="45" width="40" height="40" rx="3" fill="#10b981"/>
+      <rect x="145" y="20" width="45" height="65" rx="4" fill="#a855f7" stroke="#e9d5ff" stroke-width="2"/>
+
+      <text x="30" y="100" fill="#94a3b8" font-size="8" font-family="monospace" text-anchor="middle">L1. Uni</text>
+      <text x="75" y="100" fill="#94a3b8" font-size="8" font-family="monospace" text-anchor="middle">L2. Multi</text>
+      <text x="120" y="100" fill="#94a3b8" font-size="8" font-family="monospace" text-anchor="middle">L3. Relat</text>
+      <text x="167" y="100" fill="#c084fc" font-size="8" font-family="monospace" font-weight="bold" text-anchor="middle">L4. ExtAbs</text>
+
+      <text x="167" y="14" fill="#f3e8ff" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">★ УРОВЕНЬ 4</text>
+    </svg>
+          <div class="mt-2 text-[10px] text-slate-300 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+            <strong>Extended Abstract:</strong> Студент самостоятельно сформулировал границу применимости регуляризации и дилемму смещения-дисперсии.
+          </div>
+        </div>
+
+        <!-- RAG Slide Citations -->
+        <div class="bg-slate-950 rounded-2xl border border-slate-800 p-3 shadow-xl flex-1 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-300 font-mono">Цитаты слайдов силлабуса (RAG)</span>
+              <span class="text-[9px] font-mono text-emerald-400">BAAI/bge-m3</span>
+            </div>
+            <div class="space-y-2 text-[10px]">
+              <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                <div class="flex justify-between text-slate-400 font-mono text-[9px] mb-0.5">
+                  <span>Слайд 14: Методы регуляризации</span>
+                  <span class="text-violet-300">Cos: 0.89</span>
+                </div>
+                <div class="text-slate-300 italic">"Ко-адаптация — состояние, когда нейроны зависят друг от друга для компенсации ошибок..."</div>
+              </div>
+              <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                <div class="flex justify-between text-slate-400 font-mono text-[9px] mb-0.5">
+                  <span>Слайд 18: Dropout & Ensembling</span>
+                  <span class="text-emerald-300 font-bold">Cos: 0.94</span>
+                </div>
+                <div class="text-slate-300 italic">"Dropout аппроксимирует обучение ансамбля из 2^N подсетей без роста вычислительной сложности..."</div>
+              </div>
+            </div>
+          </div>
+          <div class="pt-2 border-t border-slate-800/80 flex flex-wrap gap-1">
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono bg-slate-900 text-slate-400 border border-slate-800">#Dropout</span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono bg-slate-900 text-slate-400 border border-slate-800">#Co-adaptation</span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono bg-slate-900 text-slate-400 border border-slate-800">#Underfitting</span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono bg-slate-900 text-slate-400 border border-slate-800">#InferenceScaling</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================= -->
+  <!-- ЛИСТ 4: КОНСОЛЬ ПРЕПОДАВАТЕЛЯ — ДАШБОРД И РАСПРЕДЕЛЕНИЕ ГАУССА -->
+  <!-- ================================================================= -->
+  <div class="sheet-page">
+    <!-- Sheet Title Header -->
+    <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+      <div class="flex items-center space-x-2">
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-950 text-indigo-300 border border-indigo-500/40">ЛИСТ 04 / 08</span>
+        <h2 class="text-xs font-bold text-white tracking-wide uppercase">Консоль преподавателя — Интерактивный дашборд когорты и кривая Гаусса</h2>
+      </div>
+      <div class="text-[10px] text-indigo-400 font-mono">
+        Группа 1 (ИИ-201) • Сигма-порог σ = 5.63 балла • Обнаружено расхождение (+21.4)
+      </div>
+    </div>
+
+    <!-- Themis App Header (Navbar: Teacher View) -->
+    <div class="mt-2 h-11 px-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between shrink-0 shadow">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center font-black text-white text-sm shadow">Θ</div>
+        <div>
+          <span class="font-bold text-xs text-white">THEMIS PROJECT</span>
+          <span class="ml-1 text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono border border-indigo-500/30">v2.0</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+        <span class="px-3 py-1 text-[11px] font-medium text-slate-400">🎓 Студент: Цифровой пандус</span>
+        <span class="px-3 py-1 text-[11px] font-semibold rounded-md bg-indigo-600 text-white shadow">📊 Консоль преподавателя</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <div class="flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1 text-xs">
+          <span>👩‍🏫</span>
+          <span class="font-semibold text-slate-200">Белощицкая С.</span>
+          <span class="text-[10px] text-indigo-400 font-mono">Преподаватель</span>
+          <button class="ml-1 px-1.5 py-0.5 bg-rose-950/60 rounded text-rose-300 text-[10px]">✕</button>
+        </div>
+        <button class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-violet-600 text-white">📚 Загрузить лекцию</button>
+      </div>
+    </div>
+
+    <!-- Metric KPI Cards -->
+    <div class="mt-2.5 grid grid-cols-5 gap-3 shrink-0">
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+        <div class="text-[10px] text-slate-400 uppercase font-mono">Когорта студентов</div>
+        <div class="text-lg font-bold text-white mt-0.5">20 <span class="text-xs text-slate-400 font-normal">студентов</span></div>
+        <div class="text-[10px] text-emerald-400">12 сдали сессию (60%)</div>
+      </div>
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+        <div class="text-[10px] text-slate-400 uppercase font-mono">Медиана расхождения</div>
+        <div class="text-lg font-bold text-emerald-400 mt-0.5">+2.5 <span class="text-xs font-normal">балла</span></div>
+        <div class="text-[10px] text-slate-400 font-mono">MAD = 3.8 балла</div>
+      </div>
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+        <div class="text-[10px] text-slate-400 uppercase font-mono">Порог расхождения (σ)</div>
+        <div class="text-lg font-bold text-indigo-400 mt-0.5">5.63 <span class="text-xs font-normal">балла</span></div>
+        <div class="text-[10px] text-slate-400 font-mono">Z-score нормализация</div>
+      </div>
+      <div class="bg-slate-950 border border-purple-500/40 rounded-xl p-2.5 bg-purple-950/20">
+        <div class="text-[10px] text-purple-300 uppercase font-mono font-bold">Скрытый потенциал</div>
+        <div class="text-lg font-bold text-purple-200 mt-0.5">1 <span class="text-xs font-normal">студент (К.)</span></div>
+        <div class="text-[10px] text-purple-400 font-bold font-mono">Δ = +21.4 (Z = +3.36σ)</div>
+      </div>
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+        <div class="text-[10px] text-slate-400 uppercase font-mono">Аудиторские алерты</div>
+        <div class="text-lg font-bold text-white mt-0.5">9 <span class="text-xs text-emerald-400 font-normal">норм</span> / 2 <span class="text-xs text-amber-400 font-normal">вним</span></div>
+        <div class="text-[10px] text-slate-400">0 штрафов (UDL Safe)</div>
+      </div>
+    </div>
+
+    <!-- Gaussian Curve Chart Container -->
+    <div class="mt-2.5 bg-slate-950 rounded-2xl border border-slate-800 p-3 shadow-xl shrink-0">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-200 font-mono">
+          Психометрическое распределение Гаусса: Расхождение Δ = S_depth - G_prof
+        </span>
+        <div class="flex items-center space-x-3 text-[10px] font-mono">
+          <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span><span class="text-slate-300">Норма (|Δ| ≤ σ)</span></span>
+          <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span><span class="text-slate-300">Повышение (σ &lt; Δ ≤ 2σ)</span></span>
+          <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span><span class="text-purple-300 font-bold">Скрытый потенциал (Δ &gt; 2σ)</span></span>
+        </div>
+      </div>
+      <svg viewBox="0 0 760 220" class="w-full h-48 select-none" style="overflow: visible;">
+      <defs>
+        <linearGradient id="normGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#10b981" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#10b981" stop-opacity="0.02"/>
+        </linearGradient>
+        <linearGradient id="elevGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.45"/>
+          <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.05"/>
+        </linearGradient>
+        <linearGradient id="sigGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#a855f7" stop-opacity="0.6"/>
+          <stop offset="100%" stop-color="#a855f7" stop-opacity="0.1"/>
+        </linearGradient>
+      </defs>
+      <!-- Base Axis -->
+      <line x1="40" y1="180" x2="720" y2="180" stroke="#334155" stroke-width="1.5"/>
+      <!-- Grid ticks & labels -->
+      <text x="140" y="198" fill="#64748b" font-size="10" font-family="monospace" text-anchor="middle">-1σ (-3.1)</text>
+      <text x="260" y="198" fill="#64748b" font-size="10" font-family="monospace" text-anchor="middle">0 (Паритет)</text>
+      <text x="380" y="198" fill="#10b981" font-size="10" font-family="monospace" font-weight="bold" text-anchor="middle">Median (+2.5)</text>
+      <text x="500" y="198" fill="#f59e0b" font-size="10" font-family="monospace" text-anchor="middle">+1σ (+8.1)</text>
+      <text x="620" y="198" fill="#a855f7" font-size="10" font-family="monospace" font-weight="bold" text-anchor="middle">+2σ (+13.8)</text>
+      <text x="700" y="198" fill="#ec4899" font-size="10" font-family="monospace" font-weight="bold" text-anchor="middle">+3.36σ (+21.4)</text>
+
+      <!-- Shaded Bell Curve Areas -->
+      <!-- Green Zone (-sigma to +sigma) -->
+      <path d="M 140,180 L 140,140 Q 260,35 380,25 Q 500,35 500,140 L 500,180 Z" fill="url(#normGrad)"/>
+      <!-- Yellow Zone (+1sigma to +2sigma) -->
+      <path d="M 500,180 L 500,140 Q 560,155 620,168 L 620,180 Z" fill="url(#elevGrad)"/>
+      <!-- Purple Zone (> +2sigma) -->
+      <path d="M 620,180 L 620,168 Q 660,175 720,178 L 720,180 Z" fill="url(#sigGrad)"/>
+
+      <!-- Smooth Curve Outline -->
+      <path d="M 40,179 Q 140,175 220,110 Q 380,18 500,120 Q 600,165 720,179" fill="none" stroke="#6366f1" stroke-width="2.5"/>
+
+      <!-- Vertical Threshold Lines -->
+      <line x1="380" y1="20" x2="380" y2="180" stroke="#10b981" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <line x1="500" y1="40" x2="500" y2="180" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <line x1="620" y1="120" x2="620" y2="180" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="3,3"/>
+
+      <!-- Plotted Cohort Points (20 students) -->
+      <!-- Green cohort points -->
+      <circle cx="210" cy="120" r="4.5" fill="#10b981" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="250" cy="85" r="4.5" fill="#10b981" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="290" cy="60" r="4.5" fill="#10b981" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="340" cy="35" r="4.5" fill="#10b981" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="370" cy="28" r="5" fill="#10b981" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="400" cy="30" r="4.5" fill="#10b981" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="430" cy="50" r="4.5" fill="#10b981" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="460" cy="80" r="4.5" fill="#10b981" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="485" cy="110" r="4.5" fill="#10b981" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Yellow elevated points -->
+      <circle cx="530" cy="148" r="5" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="575" cy="160" r="5" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
+
+      <!-- Outlier Student K (+21.4 sigma outlier) -->
+      <circle cx="700" cy="176" r="8" fill="#d946ef" stroke="#ffffff" stroke-width="2.5" class="animate-pulse"/>
+      <line x1="700" y1="170" x2="700" y2="90" stroke="#d946ef" stroke-width="2"/>
+      <rect x="625" y="55" width="150" height="32" rx="6" fill="#701a75" stroke="#f472b6" stroke-width="1.5"/>
+      <text x="700" y="70" fill="#fdf4ff" font-size="10" font-family="sans-serif" font-weight="bold" text-anchor="middle">Студент К. (stud_042)</text>
+      <text x="700" y="82" fill="#fbcfe8" font-size="9" font-family="monospace" text-anchor="middle">Δ=+21.4 (Z=+3.36σ)</text>
+    </svg>
+    </div>
+
+    <!-- Cohort Table Preview -->
+    <div class="mt-2.5 flex-1 bg-slate-950 rounded-2xl border border-slate-800 p-3 shadow-xl overflow-hidden flex flex-col justify-between">
+      <table class="w-full text-left text-xs">
+        <thead>
+          <tr class="border-b border-slate-800 text-[10px] text-slate-400 font-mono uppercase">
+            <th class="pb-1.5">Студент</th>
+            <th class="pb-1.5">Очная оценка</th>
+            <th class="pb-1.5">ИИ-глубина</th>
+            <th class="pb-1.5">Расхождение Δ</th>
+            <th class="pb-1.5">Z-score</th>
+            <th class="pb-1.5">Зона</th>
+            <th class="pb-1.5 text-right">Действие</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/60 text-slate-300">
+          <tr class="bg-purple-950/30 font-semibold text-white">
+            <td class="py-1.5 flex items-center space-x-2">
+              <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+              <span>Студент К. (stud_aai_042)</span>
+            </td>
+            <td class="py-1.5 font-mono">70.0</td>
+            <td class="py-1.5 font-mono text-purple-300">91.4</td>
+            <td class="py-1.5 font-mono text-purple-300 font-bold">+21.4</td>
+            <td class="py-1.5 font-mono text-purple-300">+3.36σ</td>
+            <td class="py-1.5"><span class="px-2 py-0.5 rounded text-[9px] bg-purple-900/60 text-purple-200 border border-purple-500/40">SIGNIFICANT</span></td>
+            <td class="py-1.5 text-right"><span class="px-2.5 py-1 rounded bg-violet-600 text-white text-[10px] font-bold">Открыть аудит →</span></td>
+          </tr>
+          <tr>
+            <td class="py-1.5">София Михайлова (stud_015)</td>
+            <td class="py-1.5 font-mono">88.0</td>
+            <td class="py-1.5 font-mono">94.0</td>
+            <td class="py-1.5 font-mono text-emerald-400">+6.0</td>
+            <td class="py-1.5 font-mono">+0.94σ</td>
+            <td class="py-1.5"><span class="px-2 py-0.5 rounded text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-500/30">PARITY</span></td>
+            <td class="py-1.5 text-right text-slate-500 font-mono text-[10px]">Подтверждено</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ================================================================= -->
+  <!-- ЛИСТ 5: КОНСОЛЬ ПРЕПОДАВАТЕЛЯ — АУДИТ СТУДЕНТА И HUMAN-IN-THE-LOOP -->
+  <!-- ================================================================= -->
+  <div class="sheet-page">
+    <!-- Sheet Title Header -->
+    <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+      <div class="flex items-center space-x-2">
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-pink-950 text-pink-300 border border-pink-500/40">ЛИСТ 05 / 08</span>
+        <h2 class="text-xs font-bold text-white tracking-wide uppercase">Консоль преподавателя — Доказательная карточка и Human-in-the-Loop ректификация</h2>
+      </div>
+      <div class="text-[10px] text-pink-400 font-mono">
+        Принцип: Решение принимает исключительно преподаватель на базе объективных цитат
+      </div>
+    </div>
+
+    <!-- Student Discrepancy Overview Banner -->
+    <div class="mt-2.5 bg-gradient-to-r from-purple-950/70 via-slate-900 to-slate-950 border border-purple-500/50 rounded-2xl p-4 shadow-xl shrink-0 flex items-center justify-between">
+      <div class="flex items-center space-x-3.5">
+        <div class="w-11 h-11 rounded-2xl bg-purple-600/25 border border-purple-500/40 text-purple-300 flex items-center justify-center font-bold text-xl">
+          🎯
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h3 class="text-sm font-bold text-white">Студент К. (stud_aai_042)</h3>
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-900/60 text-purple-200 border border-purple-500/40">Анонимный аудит</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-500/30">Telegram: @student_k_tg</span>
+          </div>
+          <p class="text-xs text-slate-300 mt-0.5">
+            Дисциплина: <strong>Программирование для ИИ</strong> • Тема: <strong>Неделя 9 (Регуляризация и Dropout)</strong>
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-4">
+        <div class="text-right">
+          <div class="text-[10px] text-slate-400 font-mono uppercase">Очная оценка</div>
+          <div class="text-base font-bold font-mono text-slate-300">70.0 (C+)</div>
+        </div>
+        <div class="text-xl text-slate-600">→</div>
+        <div class="text-right">
+          <div class="text-[10px] text-purple-300 font-mono uppercase font-bold">ИИ-глубина (SOLO 4)</div>
+          <div class="text-base font-bold font-mono text-purple-300">91.4 (A)</div>
+        </div>
+        <div class="px-3 py-1.5 rounded-xl bg-purple-950/80 border border-purple-500 text-purple-200 font-mono text-sm font-bold shadow">
+          Δ = +21.4
+        </div>
+      </div>
+    </div>
+
+    <!-- Two Columns: Evidence Extraction vs HITL Decision -->
+    <div class="mt-2.5 flex-1 grid grid-cols-2 gap-4 overflow-hidden">
+      <!-- Left: Evidence-First Findings Card -->
+      <div class="bg-slate-950 rounded-2xl border border-slate-800 p-3.5 shadow-xl flex flex-col justify-between overflow-hidden">
+        <div>
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-white font-mono">1. Доказательная база (Evidence-First Extraction)</span>
+            <span class="px-2 py-0.5 rounded text-[9px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-500/30">100% Верифицировано</span>
+          </div>
+          <div class="space-y-2 text-xs">
+            <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+              <span class="text-[10px] uppercase font-mono text-violet-400 font-bold block mb-1">Ключевая цитата студента (Шаг 3):</span>
+              <p class="text-slate-200 italic leading-relaxed">
+                "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?"
+              </p>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-[11px]">
+              <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                <span class="text-slate-400 font-mono text-[10px] block">Уровень таксономии:</span>
+                <span class="font-bold text-purple-300">Extended Abstract (Уровень 4)</span>
+                <p class="text-[10px] text-slate-400 mt-0.5">Синтез эмпирической вероятности и емкости модели.</p>
+              </div>
+              <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                <span class="text-slate-400 font-mono text-[10px] block">Привязка к силлабусу (RAG):</span>
+                <span class="font-bold text-emerald-300">Слайд 18 (Косинус 0.94)</span>
+                <p class="text-[10px] text-slate-400 mt-0.5">Теорема ансамблирования Srivastava et al.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Telemetry Audit -->
+        <div class="pt-2 border-t border-slate-800 text-[10px] text-slate-400 font-mono flex justify-between">
+          <span>Keystroke Rhythm: <strong>24.2s (Человек)</strong></span>
+          <span>Copy-Paste: <strong>0 (Чисто)</strong></span>
+          <span class="text-emerald-400 font-bold">Телеметрия валидна</span>
+        </div>
+      </div>
+
+      <!-- Right: Human-in-the-Loop Decision Panel -->
+      <div class="bg-slate-950 rounded-2xl border border-slate-800 p-3.5 shadow-xl flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-white font-mono">2. Решение преподавателя (Human-in-the-Loop)</span>
+            <span class="px-2 py-0.5 rounded text-[9px] font-mono bg-indigo-950 text-indigo-300 border border-indigo-500/30">Белощицкая С.</span>
+          </div>
+
+          <div class="space-y-2.5 text-xs">
+            <div class="text-[11px] text-slate-300">
+              Выберите вердикт ректификации. Итоговый балл фиксируется в официальной ведомости университета:
+            </div>
+
+            <!-- Radio Option 1: Full Approval -->
+            <label class="flex items-start space-x-2.5 p-2.5 rounded-xl border border-purple-500/60 bg-purple-950/20 cursor-pointer">
+              <input type="radio" name="decision" checked class="mt-0.5 accent-purple-500">
+              <div>
+                <span class="font-bold text-white text-xs block">Полное подтверждение (+21.4 балла)</span>
+                <span class="text-[11px] text-purple-300">Новый балл студента: <strong>91.4 (Оценка A)</strong>. В ведомость вносится обоснование SOLO-4.</span>
+              </div>
+            </label>
+
+            <!-- Radio Option 2: Partial -->
+            <label class="flex items-start space-x-2.5 p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 cursor-pointer">
+              <input type="radio" name="decision" class="mt-0.5 accent-slate-500">
+              <div>
+                <span class="font-semibold text-slate-300 text-xs block">Частичная корректировка (+10.0 баллов)</span>
+                <span class="text-[11px] text-slate-400">Новый балл: <strong>80.0 (Оценка B)</strong>.</span>
+              </div>
+            </label>
+
+            <!-- Radio Option 3: Keep original -->
+            <label class="flex items-start space-x-2.5 p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 cursor-pointer">
+              <input type="radio" name="decision" class="mt-0.5 accent-slate-500">
+              <div>
+                <span class="font-semibold text-slate-300 text-xs block">Отклонить (Оставить очные 70.0 C+)</span>
+                <span class="text-[11px] text-slate-400">Балл не изменяется. (Zero Downward Penalty гарантирует сохранение 70).</span>
+              </div>
+            </label>
+
+            <!-- Teacher comment field -->
+            <div>
+              <span class="text-[10px] font-mono text-slate-400 block mb-1">Обоснование преподавателя (вносится в протокол):</span>
+              <div class="bg-slate-900 border border-slate-800 rounded-lg p-2 text-[11px] text-slate-300">
+                Студент продемонстрировал глубокое архитектурное понимание темы и границы применимости Dropout. Оценка скорректирована.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-800 flex items-center justify-between">
+          <button class="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20">
+            ✓ Зафиксировать решение в ведомости
+          </button>
+          <span class="text-[10px] font-mono text-slate-400">Протокол #THM-2026-042</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================= -->
+  <!-- ЛИСТ 6: МОДАЛЬНОЕ ОКНО АВТОРИЗАЦИИ (БЫСТРЫЕ РОЛИ И ДЕМО) -->
+  <!-- ================================================================= -->
+  <div class="sheet-page">
+    <!-- Sheet Title Header -->
+    <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+      <div class="flex items-center space-x-2">
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-500/40">ЛИСТ 06 / 08</span>
+        <h2 class="text-xs font-bold text-white tracking-wide uppercase">Модальное окно авторизации — Вход по логину/паролю и быстрые роли</h2>
+      </div>
+      <div class="text-[10px] text-amber-400 font-mono">
+        Быстрый доступ для жюри и демонстрации: Студент К. и Преподаватель
+      </div>
+    </div>
+
+    <!-- Centered Modal Canvas Preview -->
+    <div class="mt-2.5 flex-1 bg-slate-950/80 rounded-2xl border border-slate-800 relative flex items-center justify-center p-6 shadow-2xl">
+      <!-- Modal Box -->
+      <div class="bg-slate-900 border border-violet-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 relative z-20">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center text-white shadow text-lg">
+              🔐
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-white uppercase tracking-wider">Авторизация Themis Project</h3>
+              <p class="text-xs text-violet-300">Вход для 20 студентов и преподавателя</p>
+            </div>
+          </div>
+          <span class="text-slate-400 text-lg font-mono">✕</span>
+        </div>
+
+        <!-- Quick Demo Presets -->
+        <div class="space-y-2">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">⚡ Быстрый вход (Сцена / Демо):</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="p-2.5 bg-violet-950/80 border border-violet-500/50 rounded-xl text-left flex items-center space-x-2.5 shadow">
+              <span class="text-xl">🎓</span>
+              <div class="leading-tight">
+                <div class="text-xs font-bold text-violet-200">Войти как Студент К.</div>
+                <div class="text-[9px] text-violet-400 font-mono">stud_01 • Группа ИИ-201</div>
+              </div>
+            </div>
+            <div class="p-2.5 bg-indigo-950/60 border border-indigo-500/40 rounded-xl text-left flex items-center space-x-2.5">
+              <span class="text-xl">👩‍🏫</span>
+              <div class="leading-tight">
+                <div class="text-xs font-bold text-indigo-200">Преподаватель</div>
+                <div class="text-[9px] text-indigo-400 font-mono">Белощицкая С.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Credentials Form Mockup -->
+        <div class="space-y-3 pt-1 text-xs">
+          <div>
+            <label class="block text-slate-300 font-medium mb-1">Имя пользователя (Логин):</label>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono">
+              stud_01
+            </div>
+          </div>
+          <div>
+            <label class="block text-slate-300 font-medium mb-1">Пароль:</label>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-400 font-mono">
+              •••••••••••• (themis2026)
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-2 pt-2 border-t border-slate-800">
+            <button class="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold rounded-xl text-xs shadow flex items-center justify-center space-x-1.5">
+              <span>🚀</span>
+              <span>Войти в систему</span>
+            </button>
+            <button class="py-2.5 px-4 bg-slate-800 text-slate-300 font-semibold rounded-xl text-xs">
+              Отмена
+            </button>
+          </div>
+        </div>
+
+        <div class="text-[10px] text-center text-slate-500 font-mono pt-1">
+          🔒 256-bit Token Auth • Сессия привязана к SQLite базе данных
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================= -->
+  <!-- ЛИСТ 7: МОДАЛЬНОЕ ОКНО ЗАГРУЗКИ МАТЕРИАЛОВ КУРСА (INGESTION RAG) -->
+  <!-- ================================================================= -->
+  <div class="sheet-page">
+    <!-- Sheet Title Header -->
+    <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+      <div class="flex items-center space-x-2">
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-950 text-teal-300 border border-teal-500/40">ЛИСТ 07 / 08</span>
+        <h2 class="text-xs font-bold text-white tracking-wide uppercase">Модальное окно загрузки материалов курса — Drag-and-Drop и Autonomous Pipeline</h2>
+      </div>
+      <div class="text-[10px] text-teal-400 font-mono">
+        Стадия: CHUNKING & INDEXING (84%) • Векторная модель BAAI/bge-m3
+      </div>
+    </div>
+
+    <!-- Centered Modal Canvas Preview -->
+    <div class="mt-2.5 flex-1 bg-slate-950/80 rounded-2xl border border-slate-800 relative flex items-center justify-center p-6 shadow-2xl">
+      <!-- Ingestion Modal Box -->
+      <div class="bg-slate-900 border border-teal-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 relative z-20">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white shadow text-lg">
+              📚
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-white uppercase tracking-wider">Загрузка и индексация лекции</h3>
+              <p class="text-xs text-teal-300">Автономный мультимодальный RAG пайплайн</p>
+            </div>
+          </div>
+          <span class="text-slate-400 text-lg font-mono">✕</span>
+        </div>
+
+        <!-- Form Context -->
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <span class="text-slate-400 block mb-1">Курс:</span>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200">
+              Программирование для ИИ (PAI 2026)
+            </div>
+          </div>
+          <div>
+            <span class="text-slate-400 block mb-1">Учебная неделя:</span>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200">
+              Неделя 11: Архитектура Transformer
+            </div>
+          </div>
+        </div>
+
+        <!-- Drag and Drop Dropzone -->
+        <div class="border-2 border-dashed border-teal-500/40 bg-teal-950/10 rounded-2xl p-4 text-center space-y-1.5">
+          <div class="text-2xl">📁</div>
+          <div class="text-xs font-bold text-white">Lecture_11_Transformers_Self_Attention.pdf</div>
+          <div class="text-[10px] text-teal-300 font-mono">Файл принят к обработке (14.2 МБ) • 38 слайдов</div>
+        </div>
+
+        <!-- Autonomous Ingestion Pipeline Progress -->
+        <div class="space-y-2 pt-1 text-xs">
+          <div class="flex justify-between items-center text-[10px] font-mono">
+            <span class="text-slate-400">Прогресс автономной индексации:</span>
+            <span class="text-teal-400 font-bold">84% (INDEXING)</span>
+          </div>
+
+          <!-- Progress bar -->
+          <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+            <div class="bg-gradient-to-r from-teal-500 to-emerald-400 h-2 rounded-full w-[84%]"></div>
+          </div>
+
+          <!-- 5 Stages pills -->
+          <div class="grid grid-cols-5 gap-1 text-[9px] font-mono text-center pt-1">
+            <div class="bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 py-1 rounded">1. CONVERT ✓</div>
+            <div class="bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 py-1 rounded">2. STRUCT ✓</div>
+            <div class="bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 py-1 rounded">3. CHUNK ✓</div>
+            <div class="bg-teal-950 text-teal-200 border border-teal-400 py-1 rounded font-bold animate-pulse">4. INDEX ⚡</div>
+            <div class="bg-slate-950 text-slate-500 border border-slate-800 py-1 rounded">5. READY</div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px]">
+          <span class="text-slate-400 font-mono">Глоссарий: 18 терминов извлечено</span>
+          <button class="px-4 py-2 bg-teal-600 text-white font-bold rounded-xl text-xs shadow">
+            Фоновый режим
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================= -->
+  <!-- ЛИСТ 8: МОБИЛЬНЫЙ ИНТЕРФЕЙС TELEGRAM MINI APP (TMA НА СМАРТФОНЕ) -->
+  <!-- ================================================================= -->
+  <div class="sheet-page">
+    <!-- Sheet Title Header -->
+    <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+      <div class="flex items-center space-x-2">
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-500/40">ЛИСТ 08 / 08</span>
+        <h2 class="text-xs font-bold text-white tracking-wide uppercase">Мобильный интерфейс Telegram Mini App (TMA на смартфоне)</h2>
+      </div>
+      <div class="text-[10px] text-blue-400 font-mono">
+        Zero Friction WebApp • Авторизация через Telegram.WebApp.initData
+      </div>
+    </div>
+
+    <!-- Centered Smartphone Mockup Canvas -->
+    <div class="mt-2.5 flex-1 bg-slate-950/60 rounded-2xl border border-slate-800 flex items-center justify-center p-4 relative overflow-hidden">
+      <!-- Smartphone Body Frame (iPhone 16 Pro styling) -->
+      <div class="w-[300px] h-[510px] bg-slate-950 rounded-[40px] border-4 border-slate-700 shadow-2xl relative flex flex-col overflow-hidden ring-1 ring-slate-600/50">
+        <!-- Dynamic Island / Speaker -->
+        <div class="h-6 bg-black flex items-center justify-between px-6 pt-1 text-[9px] text-slate-400 font-mono shrink-0">
+          <span>09:41</span>
+          <div class="w-16 h-3.5 bg-black rounded-full mx-auto border border-slate-800"></div>
+          <span>5G 100%</span>
+        </div>
+
+        <!-- Telegram Native App Header -->
+        <div class="bg-slate-900 border-b border-slate-800 px-3 py-2 flex items-center justify-between text-xs text-white shrink-0">
+          <div class="flex items-center space-x-2">
+            <span class="text-blue-400 text-sm">‹</span>
+            <div class="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-[10px]">Θ</div>
+            <div>
+              <div class="font-bold text-[11px] leading-tight flex items-center space-x-1">
+                <span>Themis Exam Bot</span>
+                <span class="text-[9px] text-blue-400">✓</span>
+              </div>
+              <div class="text-[9px] text-slate-400">bot • mini app</div>
+            </div>
+          </div>
+          <span class="text-slate-400 text-xs">•••</span>
+        </div>
+
+        <!-- TMA Webview Container -->
+        <div class="flex-1 bg-slate-900/90 flex flex-col justify-between p-3 overflow-hidden text-xs">
+          <!-- Topic Context pill -->
+          <div class="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800 text-[10px]">
+            <div>
+              <span class="text-violet-400 font-bold block">Неделя 9: Dropout и регуляризация</span>
+              <span class="text-slate-400">Студент К. (@student_k_tg)</span>
+            </div>
+            <span class="px-2 py-0.5 rounded font-mono bg-violet-950 text-violet-300 border border-violet-500/40 font-bold">2/3</span>
+          </div>
+
+          <!-- Mobile Chat Bubbles -->
+          <div class="my-auto space-y-2 py-2 text-[11px] leading-tight">
+            <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl rounded-tl-sm p-2.5 text-slate-200">
+              AI: Как именно метод Dropout предотвращает ко-адаптацию во время прямого прохода?
+            </div>
+            <div class="bg-violet-900/60 border border-violet-500/50 rounded-2xl rounded-tr-sm p-2.5 text-violet-100 ml-auto max-w-[220px]">
+              К.: Зануляет случайные нейроны с вероятностью p, создавая ансамбль подсетей.
+            </div>
+            <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl rounded-tl-sm p-2.5 text-slate-200">
+              AI: Сформулируйте границу применимости при p = 0.85?
+            </div>
+          </div>
+
+          <!-- UDL Non-Penalty Shield Badge -->
+          <div class="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-2 text-[10px] text-emerald-300 flex items-center space-x-2">
+            <span>🛡️</span>
+            <span>Zero Downward Penalty: Очная оценка 70.0 гарантирована.</span>
+          </div>
+
+          <!-- Mobile Input Bar -->
+          <div class="mt-2 pt-2 border-t border-slate-800 flex items-center space-x-1.5">
+            <div class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-[10px] text-slate-400">
+              Ваш ответ...
+            </div>
+            <button class="w-7 h-7 rounded-xl bg-violet-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+              ➤
+            </button>
+          </div>
+        </div>
+
+        <!-- Phone Home Indicator Bar -->
+        <div class="h-4 bg-slate-950 flex items-center justify-center shrink-0">
+          <div class="w-24 h-1 bg-slate-600 rounded-full"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

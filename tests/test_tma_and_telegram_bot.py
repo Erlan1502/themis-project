@@ -13,6 +13,7 @@ test_tma_and_telegram_bot.py
 """
 
 import pytest
+import asyncio
 import time
 import json
 import urllib.parse
@@ -364,3 +365,77 @@ def test_telegram_bot_webhook_help_and_callback(client):
     })
     assert resp_cb.status_code == 200
     assert resp_cb.json()["result"]["action"] == "callback_handled"
+
+
+def test_telegram_bot_long_polling_dev_mode():
+    """Тест безопасного поведения start_polling и delete_webhook в DEV-режиме."""
+    dev_bot = telegram_bot.__class__(bot_token="dev")
+    assert dev_bot.is_dev_mode is True
+
+    # delete_webhook в DEV режиме возвращает заглушку без сетевых вызовов
+    res_del = asyncio.run(dev_bot.delete_webhook())
+    assert res_del.get("ok") is True
+
+    # start_polling в DEV режиме немедленно завершается
+    asyncio.run(dev_bot.start_polling(timeout=1))
+    assert dev_bot._is_polling is False
+
+
+def test_telegram_bot_long_polling_lifecycle(monkeypatch):
+    """Тест цикла обработки updates через Long Polling с моком httpx."""
+    test_bot = telegram_bot.__class__(bot_token="123456:FAKE_REAL_TOKEN_FOR_TEST")
+    assert test_bot.is_dev_mode is False
+
+    processed_updates = []
+
+    async def fake_handle_update(update):
+        processed_updates.append(update)
+        # Останавливаем опрос после получения первого апдейта
+        test_bot.stop_polling()
+        return {"ok": True}
+
+    monkeypatch.setattr(test_bot, "handle_update", fake_handle_update)
+
+    class FakeHttpxResponse:
+        def __init__(self, data, status_code=200):
+            self._data = data
+            self.status_code = status_code
+            self.text = json.dumps(data)
+        def json(self):
+            return self._data
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+        async def post(self, url, **kwargs):
+            return FakeHttpxResponse({"ok": True, "result": True})
+        async def get(self, url, **kwargs):
+            return FakeHttpxResponse({
+                "ok": True,
+                "result": [
+                    {
+                        "update_id": 55501,
+                        "message": {
+                            "message_id": 1,
+                            "chat": {"id": 12345},
+                            "text": "/start"
+                        }
+                    }
+                ]
+            })
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+
+    # Запускаем polling
+    asyncio.run(test_bot.start_polling(timeout=1))
+
+    assert len(processed_updates) == 1
+    assert processed_updates[0]["update_id"] == 55501
+    assert test_bot._is_polling is False
+
+

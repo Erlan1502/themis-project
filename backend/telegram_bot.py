@@ -39,6 +39,81 @@ class TelegramBotService:
         self.public_url = (public_url or settings.PUBLIC_URL).rstrip("/")
         self.bot_username = bot_username or settings.TELEGRAM_BOT_USERNAME
         self._binding_callback: Optional[Callable] = None
+        self._is_polling: bool = False
+
+    async def delete_webhook(self, drop_pending_updates: bool = False) -> Dict[str, Any]:
+        """
+        Удаление текущего вебхука Telegram Bot API перед запуском Long Polling.
+        """
+        if self.is_dev_mode:
+            logger.info("[DEV BOT] deleteWebhook пропущен в DEV/Test режиме.")
+            return {"ok": True, "result": True}
+
+        api_url = f"https://api.telegram.org/bot{self.bot_token}/deleteWebhook"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(api_url, json={"drop_pending_updates": drop_pending_updates})
+                data = resp.json()
+                logger.info(f"Telegram deleteWebhook response: {data}")
+                return data
+        except Exception as e:
+            logger.warning(f"Failed to delete Telegram webhook: {e}")
+            return {"ok": False, "error": str(e)}
+
+    async def start_polling(self, timeout: int = 10):
+        """
+        Запуск фонового цикла Long Polling (getUpdates).
+        Гарантирует работу бота на локальном сервере (localhost) без публичного IP или туннеля.
+        Снимает вебхук и непрерывно получает апдейты от Telegram серверов.
+        """
+        if self.is_dev_mode:
+            logger.info("[DEV BOT] Long Polling пропущен (DEV/Test режим).")
+            return
+
+        logger.info(f"Запуск Telegram Bot Long Polling для @{self.bot_username}...")
+        # Снимаем активный webhook, чтобы Telegram начал отдавать апдейты через getUpdates
+        await self.delete_webhook(drop_pending_updates=False)
+
+        self._is_polling = True
+        offset = 0
+
+        async with httpx.AsyncClient(timeout=float(timeout + 15)) as client:
+            while self._is_polling:
+                try:
+                    url = f"https://api.telegram.org/bot{self.bot_token}/getUpdates"
+                    resp = await client.get(url, params={"offset": offset, "timeout": timeout})
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get("ok"):
+                            updates = data.get("result", [])
+                            for update in updates:
+                                uid = update.get("update_id")
+                                if uid is not None:
+                                    offset = max(offset, uid + 1)
+                                try:
+                                    await self.handle_update(update)
+                                except Exception as handle_err:
+                                    logger.error(f"Ошибка при обработке update {uid}: {handle_err}", exc_info=True)
+                        else:
+                            logger.warning(f"Telegram getUpdates response not OK: {data}")
+                            await asyncio.sleep(2.0)
+                    else:
+                        logger.warning(f"Telegram getUpdates HTTP {resp.status_code}: {resp.text}")
+                        await asyncio.sleep(3.0)
+                except asyncio.CancelledError:
+                    logger.info("Фоновая задача Telegram Long Polling отменена.")
+                    break
+                except Exception as e:
+                    if not self._is_polling:
+                        break
+                    logger.warning(f"Сетевая ошибка при Telegram Long Polling: {e}. Повтор через 2с...")
+                    await asyncio.sleep(2.0)
+
+        logger.info("Telegram Bot Long Polling остановлен.")
+
+    def stop_polling(self):
+        """Остановка фонового цикла Long Polling."""
+        self._is_polling = False
 
     def set_binding_callback(self, callback: Callable):
         """Установить асинхронный колбэк при успешной привязке Telegram."""
