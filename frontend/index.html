@@ -818,12 +818,12 @@
     // =================================================================
     // APPLICATION STATE
     // =================================================================
+    let activeTopicId = 'week_09_deep_learning'; // Default: Week 9 / topic_05
     let currentCourseId = 'prog_ai_2026';
     let currentStudentId = localStorage.getItem('themis_active_student_id') || 'stud_aai_042';
     let currentSessionId = localStorage.getItem('themis_session_' + currentStudentId + '_' + activeTopicId) || null;
     let selectedReportStudentId = 'stud_aai_042';
     let currentTurnNumber = 0;
-    let activeTopicId = 'week_09_deep_learning'; // Default: Week 9 / topic_05
     let coursesList = [];
     let syllabusWeeks = [];
     let studentsGroup1 = [];
@@ -1373,7 +1373,8 @@
           else if (s.session_status === 'INCOMPLETE_IGNORED') icon = '⚪';
           else if (s.session_status === 'OPTED_OUT') icon = '⚪';
 
-          opt.textContent = `${icon} ${s.display_name} (Очная: ${s.in_class_grade.toFixed(1)})`;
+          const gradeVal = (s.in_class_grade != null) ? Number(s.in_class_grade).toFixed(1) : '70.0';
+          opt.textContent = `${icon} ${s.display_name} (Очная: ${gradeVal})`;
           if (s.student_id === currentStudentId) {
             opt.selected = true;
           }
@@ -1414,14 +1415,15 @@
       const cardStatus = document.getElementById('stud-diag-status');
       const telemetryLabel = document.getElementById('telemetry-student-label');
 
-      if (cardName) cardName.textContent = student.display_name;
-      if (cardId) cardId.textContent = student.student_id;
+      if (cardName) cardName.textContent = student.display_name || 'Студент';
+      if (cardId) cardId.textContent = student.student_id || studentId;
       if (cardAvatar) {
-        const cleanName = student.display_name.replace(/^Студент\s*/i, '').trim();
+        const cleanName = (student.display_name || '').replace(/^Студент\s*/i, '').trim();
         cardAvatar.textContent = (cleanName ? cleanName.charAt(0).toUpperCase() : 'С') + '.';
       }
-      if (cardGrade) cardGrade.textContent = `${student.in_class_grade.toFixed(1)} / 100`;
-      if (telemetryLabel) telemetryLabel.textContent = `${student.student_id} (${student.display_name})`;
+      const gradeNum = (student && student.in_class_grade != null) ? Number(student.in_class_grade).toFixed(1) : '70.0';
+      if (cardGrade) cardGrade.textContent = `${gradeNum} / 100`;
+      if (telemetryLabel) telemetryLabel.textContent = `${student.student_id || studentId} (${student.display_name || 'Студент'})`;
 
       // Fetch active session from backend
       try {
@@ -1429,7 +1431,7 @@
         const data = await res.json();
 
         const chatContainer = document.getElementById('chat-messages');
-        chatContainer.innerHTML = '';
+        if (chatContainer) chatContainer.innerHTML = '';
 
         const week = syllabusWeeks.find(w => w.topic_id === activeTopicId) || syllabusWeeks.find(w => w.week_number === 9);
         const promptText = (data && data.initial_prompt) || (week ? week.initial_prompt : 'Вопрос занятия...');
@@ -1442,11 +1444,11 @@
             ${escapeHtml(promptText)}
           </div>
         `;
-        chatContainer.appendChild(initDiv);
+        if (chatContainer) chatContainer.appendChild(initDiv);
 
-        if (data.found && data.session_id) {
+        if (data && data.found && data.session_id) {
           currentSessionId = data.session_id;
-          currentTurnNumber = data.turns_count;
+          currentTurnNumber = data.turns_count || 0;
           localStorage.setItem('themis_session_' + studentId + '_' + activeTopicId, currentSessionId);
 
           // Synchronize session timer
@@ -1462,16 +1464,18 @@
           }
 
           // Append past dialog turns
-          data.turns.forEach(t => {
-            appendChatMessage('user', t.student, false, null, null, t.turn_number);
-            appendChatMessage('assistant', t.system, t.is_duplicate, null, null, t.turn_number);
-          });
+          if (data.turns && Array.isArray(data.turns)) {
+            data.turns.forEach(t => {
+              appendChatMessage('user', t.student, false, null, null, t.turn_number);
+              appendChatMessage('assistant', t.system, t.is_duplicate, null, null, t.turn_number);
+            });
+          }
 
           // Compute matching ai depth score dynamically without hardcoding (Problem 1)
           const cachedRec = cachedStudents.find(s => s.student_id === studentId);
           const realDepthScore = (cachedRec && cachedRec.ai_depth_score != null)
-            ? cachedRec.ai_depth_score.toFixed(1)
-            : (student.ai_depth_score != null ? student.ai_depth_score.toFixed(1) : null);
+            ? Number(cachedRec.ai_depth_score).toFixed(1)
+            : (student.ai_depth_score != null ? Number(student.ai_depth_score).toFixed(1) : null);
 
           // Разблокируем ввод и кнопку отправки (окно открыто до конца таймера)
           const input = document.getElementById('student-input');
@@ -2928,13 +2932,14 @@
       const password = pInput?.value;
       if (!username || !password) return;
 
+      let data;
       try {
         const res = await fetch('/api/v1/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
         });
-        const data = await res.json();
+        data = await res.json();
         if (!res.ok) {
           if (errBox) {
             errBox.textContent = data.detail || 'Неверный логин или пароль';
@@ -2942,7 +2947,17 @@
           }
           return;
         }
+      } catch (networkErr) {
+        console.error('Network / Auth login error:', networkErr);
+        if (errBox) {
+          errBox.textContent = 'Ошибка подключения к сервису авторизации';
+          errBox.classList.remove('hidden');
+        }
+        return;
+      }
 
+      // Successful auth response
+      try {
         localStorage.setItem('themis_auth_token', data.token);
         currentUser = data;
         closeLoginModal();
@@ -2963,12 +2978,9 @@
           showToast('Успешный вход', `Студент: ${data.display_name}`, 'emerald');
           renderTelegramBindingCard();
         }
-      } catch (err) {
-        console.error('Login error:', err);
-        if (errBox) {
-          errBox.textContent = 'Ошибка сервиса авторизации';
-          errBox.classList.remove('hidden');
-        }
+      } catch (uiErr) {
+        console.error('Post-login UI update warning:', uiErr);
+        closeLoginModal();
       }
     }
 
