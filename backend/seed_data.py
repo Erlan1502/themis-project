@@ -77,8 +77,10 @@ def get_canonical_extraction_stud_k() -> AuditExtractionResult:
     return AuditExtractionResult(
         on_topic=True,
         student_quotes=[
+            "Переобучение происходит, когда веса подстраиваются под шум выборки, создавая избыточную ко-адаптацию (co-adaptation) нейронов.",
+            "Dropout случайным образом обнуляет активации, предотвращая взаимную зависимость.",
             "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? "
-            "В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?"
+            "В какой момент этот компромисс (dropout rate trade-off) сломает обучение и вызовет потерю емкости сети (model capacity, underfitting)?"
         ],
         mastered_concepts=[
             "co-adaptation",
@@ -103,6 +105,8 @@ def get_canonical_benchmark_stud_k() -> StudentAuditRecord:
     """Каноническая эталонная запись Студента К. (для восстановления через /restore_canonical)."""
     rec = StudentAuditRecord(
         student_id="stud_aai_042",
+        course_id="prog_ai_2026",
+        topic_id="week_09_deep_learning",
         in_class_grade=70.0,
         session_status="COMPLETED",
         turns_count=3,
@@ -118,11 +122,14 @@ def get_canonical_benchmark_stud_k() -> StudentAuditRecord:
 
 def get_canonical_seed_records() -> List[StudentAuditRecord]:
     records: List[StudentAuditRecord] = []
+    engine = ThemisMathEngine()
 
     # 1. Студент К. (stud_aai_042) — по умолчанию инициализируется как чистый студент
     # (0 реплик, статус 'OPTED_OUT'), чтобы пользователь мог пройти диалог с чистого листа в реальном времени!
     stud_k = StudentAuditRecord(
         student_id="stud_aai_042",
+        course_id="prog_ai_2026",
+        topic_id="week_09_deep_learning",
         in_class_grade=70.0,
         session_status="OPTED_OUT",
         turns_count=0,
@@ -142,47 +149,176 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
     # deltas: [-3.2, -1.5, -1.3, 0.4, 1.1, 2.0, 3.0, 4.2, 6.3, 11.0, 13.2]
     # При добавлении stud_k (delta = +23.5) медиана массива равна ровно 2.5, а MAD = 3.8.
     other_completed_configs = [
-        # (id, in_class, raw_delta, concepts_count, tokens, initiative, quotes, justification)
-        ("stud_aai_001", 85.0, -3.2, 3, 160, False, ["Dropout отключает случайные нейроны."], "Базовое понимание Dropout."),
-        ("stud_aai_002", 82.0, -1.5, 3, 140, False, ["Это снижает зависимость нейронов друг от друга."], "Понимание снижения ко-адаптации."),
-        ("stud_aai_003", 79.0, -1.3, 3, 150, False, ["На тесте все веса умножаются на p."], "Знание процедуры инференса (inverted dropout)."),
-        ("stud_aai_004", 75.0, 0.4, 3, 170, False, ["L2-регуляризация штрафует большие веса."], "Сравнение с L2/Weight decay."),
-        ("stud_aai_005", 78.0, 1.1, 4, 180, False, ["Dropout можно интерпретировать как ансамблирование подсетей."], "Связь с ансамблевыми методами."),
-        ("stud_aai_006", 81.0, 2.0, 4, 160, False, ["Шум во время обучения мешает ко-адаптации."], "Физическая интуиция регуляризации."),
-        ("stud_aai_007", 76.0, 3.0, 4, 190, False, ["При слишком высоком p сеть недообучается."], "Осознание риска underfitting."),
-        ("stud_aai_008", 72.0, 4.2, 4, 175, False, ["Dropout обычно не применяют к сверточным слоям с 1x1 фильтрами."], "Понимание специфики для CNN."),
-        ("stud_aai_009", 74.0, 6.3, 4, 185, False, ["Разреживание активаций стабилизирует скрытые представления."], "Углубленный ответ уровня Relational."),
+        # (id, in_class, raw_delta, tokens, initiative, quotes, justification, turns)
+        (
+            "stud_aai_001", 85.0, -3.2, 160, False,
+            [
+                "Dropout отключает случайные нейроны.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Базовое понимание Dropout.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.1, p2=0.6, p3=0.3),
+                TurnSOLOProbabilities(turn_number=3, p1=0.05, p2=0.35, p3=0.6),
+            ],
+        ),
+        (
+            "stud_aai_002", 82.0, -1.5, 140, False,
+            [
+                "Это снижает зависимость нейронов друг от друга.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Понимание снижения ко-адаптации.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.1, p2=0.7, p3=0.2),
+                TurnSOLOProbabilities(turn_number=3, p1=0.1, p2=0.3, p3=0.6),
+            ],
+        ),
+        (
+            "stud_aai_003", 79.0, -1.3, 150, False,
+            [
+                "На тесте все веса умножаются на p.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Знание процедуры инференса (inverted dropout).",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.1, p2=0.6, p3=0.3),
+                TurnSOLOProbabilities(turn_number=3, p1=0.1, p2=0.4, p3=0.5),
+            ],
+        ),
+        (
+            "stud_aai_004", 75.0, 0.4, 170, False,
+            [
+                "L2-регуляризация штрафует большие веса.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Сравнение с L2/Weight decay.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.2, p2=0.6, p3=0.2),
+                TurnSOLOProbabilities(turn_number=3, p1=0.1, p2=0.45, p3=0.45),
+            ],
+        ),
+        (
+            "stud_aai_005", 78.0, 1.1, 180, False,
+            [
+                "Dropout можно интерпретировать как ансамблирование подсетей.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Связь с ансамблевыми методами.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.1, p2=0.5, p3=0.4),
+                TurnSOLOProbabilities(turn_number=3, p1=0.05, p2=0.45, p3=0.5),
+            ],
+        ),
+        (
+            "stud_aai_006", 81.0, 2.0, 160, False,
+            [
+                "Шум во время обучения мешает ко-адаптации.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Физическая интуиция регуляризации.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.0, p2=0.6, p3=0.4),
+                TurnSOLOProbabilities(turn_number=3, p1=0.1, p2=0.25, p3=0.65),
+            ],
+        ),
+        (
+            "stud_aai_007", 76.0, 3.0, 190, False,
+            [
+                "При слишком высоком p сеть недообучается.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Осознание риска underfitting.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.7, p2=0.3, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.0, p2=0.5, p3=0.5),
+                TurnSOLOProbabilities(turn_number=3, p1=0.1, p2=0.4, p3=0.5),
+            ],
+        ),
+        (
+            "stud_aai_008", 72.0, 4.2, 175, False,
+            [
+                "Dropout обычно не применяют к сверточным слоям с 1x1 фильтрами.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Понимание специфики для CNN.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.1, p2=0.7, p3=0.2),
+                TurnSOLOProbabilities(turn_number=3, p1=0.05, p2=0.5, p3=0.45),
+            ],
+        ),
+        (
+            "stud_aai_009", 74.0, 6.3, 185, False,
+            [
+                "Разреживание активаций стабилизирует скрытые представления.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Углубленный ответ уровня Relational.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.0, p2=0.5, p3=0.5),
+                TurnSOLOProbabilities(turn_number=3, p1=0.1, p2=0.35, p3=0.55),
+            ],
+        ),
         # 2 студента в WATCHLIST (желтая зона)
-        ("stud_aai_010", 73.0, 11.0, 4, 190, False, ["Проблема внутреннего ковариантного сдвига и как Dropout взаимодействует с BatchNorm."], "Студент затронул тонкий конфликт между Dropout и Batch Normalization."),
-        ("stud_aai_011", 71.0, 13.2, 4, 195, False, ["Масштабирование градиентов при Inverted Dropout сохраняет масштаб функции активации."], "Глубокий анализ масштабирования дисперсии активаций."),
+        (
+            "stud_aai_010", 73.0, 11.0, 190, False,
+            [
+                "Проблема внутреннего ковариантного сдвига и как Dropout взаимодействует с BatchNorm.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Студент затронул тонкий конфликт между Dropout и Batch Normalization.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.1, p2=0.8, p3=0.1),
+                TurnSOLOProbabilities(turn_number=3, p1=0.05, p2=0.25, p3=0.7),
+            ],
+        ),
+        (
+            "stud_aai_011", 71.0, 13.2, 195, False,
+            [
+                "Масштабирование градиентов при Inverted Dropout сохраняет масштаб функции активации.",
+                "Dropout и регуляризация (regularization) снижают ко-адаптацию (co-adaptation), предотвращая underfitting."
+            ],
+            "Глубокий анализ масштабирования дисперсии активаций.",
+            [
+                TurnSOLOProbabilities(turn_number=1, p1=0.8, p2=0.2, p3=0.0),
+                TurnSOLOProbabilities(turn_number=2, p1=0.1, p2=0.6, p3=0.3),
+                TurnSOLOProbabilities(turn_number=3, p1=0.0, p2=0.35, p3=0.65),
+            ],
+        ),
     ]
 
-    for sid, in_class, raw_d, n_c, tokens, init, quotes, just in other_completed_configs:
-        depth_score = round(in_class + raw_d, 1)
+    for sid, in_class, raw_d, tokens, init, quotes, just, turns in other_completed_configs:
         ext = AuditExtractionResult(
             on_topic=True,
             student_quotes=quotes,
-            mastered_concepts=["dropout", "regularization", "co-adaptation"][:n_c],
+            mastered_concepts=["dropout", "regularization", "co-adaptation", "underfitting"],
             socratic_initiative=init,
             pedagogical_justification=just,
-            turns_probabilities=[
-                TurnSOLOProbabilities(turn_number=1, p1=0.7, p2=0.3, p3=0.0),
-                TurnSOLOProbabilities(turn_number=2, p1=0.2, p2=0.6, p3=0.2),
-                TurnSOLOProbabilities(turn_number=3, p1=0.1, p2=0.4, p3=0.5),
-            ]
+            turns_probabilities=turns,
         )
         rec = StudentAuditRecord(
             student_id=sid,
+            course_id="prog_ai_2026",
+            topic_id="week_09_deep_learning",
             in_class_grade=in_class,
             session_status="COMPLETED",
             turns_count=3,
             total_tokens=tokens,
             extraction=ext,
-            ai_depth_score=depth_score,
             telemetry_clean=True,
             group_id="group_1",
             student_name=STUDENT_NAMES_MAP.get(sid, sid),
         )
+        engine.compute_individual_depth(rec)
         records.append(rec)
 
     # Добавляем stud_k к completed (всего 12)
@@ -196,6 +332,8 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
     for sid, in_class, turns, tokens, quotes in incomplete_configs:
         rec = StudentAuditRecord(
             student_id=sid,
+            course_id="prog_ai_2026",
+            topic_id="week_09_deep_learning",
             in_class_grade=in_class,
             session_status="INCOMPLETE_IGNORED",
             turns_count=turns,
@@ -230,6 +368,8 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
     for sid, in_class, gid in opted_out_grades:
         rec = StudentAuditRecord(
             student_id=sid,
+            course_id="prog_ai_2026",
+            topic_id="week_09_deep_learning",
             in_class_grade=in_class,
             session_status="OPTED_OUT",
             turns_count=0,
@@ -243,7 +383,6 @@ def get_canonical_seed_records() -> List[StudentAuditRecord]:
         records.append(rec)
 
     # Выполняем когортный расчет (Этап 3B)
-    engine = ThemisMathEngine()
     engine.compute_cohort_discrepancy(records)
 
     return records

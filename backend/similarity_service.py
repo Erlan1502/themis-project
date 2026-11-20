@@ -27,10 +27,13 @@ class SemanticSimilarityService:
         "ко-адаптация": ["co-adaptation", "coadaptation"],
         "underfitting": ["недообучение", "андерфиттинг", "потеря емкости"],
         "overfitting": ["переобучение", "оверфиттинг"],
-        "model capacity": ["емкость модели", "емкость сети", "емкость"],
+        "model capacity": ["емкость модели", "емкости модели", "емкость сети", "емкости сети", "емкость", "емкости", "емкост"],
         "dropout": ["дропаут"],
+        "dropout rate trade-off": ["компромисс", "выключать 80%", "вероятность dropout", "dropout rate", "trade-off", "80%"],
         "backpropagation": ["обратное распространение", "бэкпроп"],
         "activation functions": ["функции активации", "функция активации"],
+        "regularization": ["регуляризация", "регуляризации", "регуляризацией", "регуляризацию"],
+        "регуляризация": ["regularization"],
     }
 
     def match_concept(self, concept: str, text: str) -> bool:

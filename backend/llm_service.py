@@ -12,6 +12,7 @@ import json
 import re
 import asyncio
 import logging
+import time
 from openai import AsyncOpenAI
 
 from backend.config import settings
@@ -20,6 +21,7 @@ from backend.models_schemas import (
     AuditExtractionResult,
 )
 from backend.rag_service import rag_service
+from backend.database import resolve_topic_id, get_course
 
 logger = logging.getLogger("themis.llm")
 
@@ -29,7 +31,35 @@ class LLMService:
         self.mode = settings.LLM_MODE
         self.client: Optional[AsyncOpenAI] = None
         self._client_loop = None
+        self._circuit_breaker_until: float = 0.0
         self._init_client()
+
+    def is_circuit_open(self) -> bool:
+        """Проверяет, активен ли предохранитель (Circuit Breaker) после сбоя API."""
+        return time.time() < self._circuit_breaker_until
+
+    def trip_circuit(self, duration: float = 60.0):
+        """Активирует Circuit Breaker на duration секунд."""
+        self._circuit_breaker_until = time.time() + duration
+        logger.warning(f"Circuit breaker tripped for {duration} seconds (until {self._circuit_breaker_until})")
+
+    def reset_circuit(self):
+        """Сбрасывает Circuit Breaker."""
+        self._circuit_breaker_until = 0.0
+
+    def _resolve_course_name(self, topic_id: str, course_name: Optional[str] = None) -> str:
+        """Определяет актуальное название курса для системного промпта."""
+        if course_name:
+            return course_name
+        try:
+            topic_data = rag_service.get_topic_data(topic_id)
+            course_id = topic_data.get("course_id") if topic_data else "prog_ai_2026"
+            c_info = get_course(course_id or "prog_ai_2026")
+            if c_info and c_info.get("title"):
+                return c_info["title"]
+        except Exception:
+            pass
+        return "Программирование для ИИ"
 
     def _init_client(self):
         # 1. Режим Google Gemini
@@ -40,7 +70,8 @@ class LLMService:
                     self.client = AsyncOpenAI(
                         base_url=settings.GEMINI_BASE_URL,
                         api_key=key,
-                        timeout=30.0,
+                        timeout=15.0,
+                        max_retries=0,
                     )
                     self.dialog_model = settings.GEMINI_MODEL
                     self.audit_model = settings.GEMINI_MODEL
@@ -58,7 +89,8 @@ class LLMService:
                 self.client = AsyncOpenAI(
                     base_url=settings.QWEN_BASE_URL,
                     api_key=settings.QWEN_API_KEY,
-                    timeout=30.0,
+                    timeout=15.0,
+                    max_retries=0,
                 )
                 self.dialog_model = settings.QWEN_DIALOG_MODEL
                 self.audit_model = settings.QWEN_AUDIT_MODEL
@@ -88,18 +120,22 @@ class LLMService:
         turn_number: int,
         student_message: str,
         history: List[Dict[str, str]],
+        course_name: Optional[str] = None,
     ) -> str:
         """Генерация сократической реплики (Слой 2)."""
         client = self.get_client()
-        if self.mode == "mock" or client is None:
+        if self.mode == "mock" or client is None or self.is_circuit_open():
+            if self.is_circuit_open():
+                logger.warning("Circuit breaker active, using fallback")
             return self._mock_socratic_reply(topic_id, turn_number, student_message)
 
         try:
             grounding_chunks = await rag_service.retrieve_chunks_async(student_message, topic_id)
             context_str = "\n\n".join([f"[{c['title']}]: {c['content']}" for c in grounding_chunks])
+            effective_course = self._resolve_course_name(topic_id, course_name)
 
             system_prompt = (
-                "Ты — сократический ИИ-тьютор Themis Project для курса 'Программирование для ИИ' (Astana IT University). "
+                f"Ты — сократический ИИ-тьютор Themis Project для курса '{effective_course}' (Astana IT University). "
                 "Твоя задача — не давать студенту готовых ответов, а задавать наводящие вопросы, углубляя его понимание "
                 "по таксономии SOLO:\n"
                 "- Шаг 1 -> выявление механизмов и причинных связей (Relational, SOLO 2);\n"
@@ -119,10 +155,12 @@ class LLMService:
                 messages=messages,
                 temperature=0.7,
                 max_tokens=2048,
+                timeout=10.0,
             )
             return resp.choices[0].message.content.strip()
         except Exception as e:
-            logger.error(f"Error calling live LLM dialog service: {e}. Falling back to mock.")
+            self.trip_circuit(60.0)
+            logger.error(f"Error calling live LLM dialog service: {e}. Circuit breaker tripped. Falling back to mock.")
             return self._mock_socratic_reply(topic_id, turn_number, student_message)
 
     async def generate_socratic_reply_stream(
@@ -131,6 +169,7 @@ class LLMService:
         turn_number: int,
         student_message: str,
         history: List[Dict[str, str]],
+        course_name: Optional[str] = None,
     ) -> AsyncIterator[str]:
         """
         Потоковая генерация сократической реплики (Слой 2).
@@ -138,17 +177,21 @@ class LLMService:
         так и в автономном mock-режиме (потоковая выдача детерминированных слов).
         """
         client = self.get_client()
-        if self.mode == "mock" or client is None:
+        if self.mode == "mock" or client is None or self.is_circuit_open():
+            if self.is_circuit_open():
+                logger.warning("Circuit breaker active, using fallback")
             async for chunk in self._mock_socratic_reply_stream(topic_id, turn_number, student_message):
                 yield chunk
             return
 
+        yielded_chars: int = 0
         try:
             grounding_chunks = await rag_service.retrieve_chunks_async(student_message, topic_id)
             context_str = "\n\n".join([f"[{c['title']}]: {c['content']}" for c in grounding_chunks])
+            effective_course = self._resolve_course_name(topic_id, course_name)
 
             system_prompt = (
-                "Ты — сократический ИИ-тьютор Themis Project для курса 'Программирование для ИИ' (Astana IT University). "
+                f"Ты — сократический ИИ-тьютор Themis Project для курса '{effective_course}' (Astana IT University). "
                 "Твоя задача — не давать студенту готовых ответов, а задавать наводящие вопросы, углубляя его понимание "
                 "по таксономии SOLO:\n"
                 "- Шаг 1 -> выявление механизмов и причинных связей (Relational, SOLO 2);\n"
@@ -169,25 +212,36 @@ class LLMService:
                 temperature=0.7,
                 max_tokens=2048,
                 stream=True,
+                timeout=10.0,
             )
             async for chunk in response_stream:
                 if chunk.choices and chunk.choices[0].delta:
                     delta = chunk.choices[0].delta.content
                     if delta:
+                        yielded_chars += len(delta)
                         yield delta
         except Exception as e:
-            logger.error(f"Error calling live LLM dialog stream service: {e}. Falling back to mock stream.")
-            async for chunk in self._mock_socratic_reply_stream(topic_id, turn_number, student_message):
-                yield chunk
+            self.trip_circuit(60.0)
+            logger.error(f"Error calling live LLM dialog stream service: {e}. Circuit breaker tripped.")
+            if yielded_chars == 0:
+                logger.info("No tokens yielded yet, falling back to mock stream.")
+                async for chunk in self._mock_socratic_reply_stream(topic_id, turn_number, student_message):
+                    yield chunk
+            else:
+                logger.warning(f"Stream interrupted after {yielded_chars} chars. Appending break marker.")
+                yield " ... [связь прервана]"
 
     async def extract_audit_evidence(
         self,
         topic_id: str,
         dialog_turns: List[Dict[str, str]],
+        course_name: Optional[str] = None,
     ) -> AuditExtractionResult:
         """Извлечение доказательств аудита по протоколу Evidence-First (Слой 3A)."""
         client = self.get_client()
-        if self.mode == "mock" or client is None:
+        if self.mode == "mock" or client is None or self.is_circuit_open():
+            if self.is_circuit_open():
+                logger.warning("Circuit breaker active, using fallback")
             return self._mock_audit_extraction(topic_id, dialog_turns)
 
         try:
@@ -196,9 +250,10 @@ class LLMService:
                 f"Шаг {i+1} [Студент]: {t.get('student', '')}\n[Тьютор]: {t.get('system', '')}"
                 for i, t in enumerate(dialog_turns)
             ])
+            effective_course = self._resolve_course_name(topic_id, course_name)
 
             system_prompt = (
-                "Ты — эксперт психометрического аудита Themis Project по силлабусу 'Программирование для ИИ'. "
+                f"Ты — эксперт психометрического аудита Themis Project по силлабусу '{effective_course}'. "
                 "Проанализируй диалог студента по протоколу EVIDENCE-FIRST. "
                 "1. Сначала извлеки прямые цитаты студента (student_quotes).\n"
                 "2. Выдели освоенные концепты из глоссария темы (mastered_concepts).\n"
@@ -230,6 +285,7 @@ class LLMService:
                 response_format={"type": "json_object"},
                 temperature=0.1,
                 max_tokens=3000,
+                timeout=15.0,
             )
             content = resp.choices[0].message.content.strip()
             # Извлекаем JSON-объект, отсекая комментарии или markdown-блоки
@@ -262,7 +318,8 @@ class LLMService:
             result.mastered_concepts = verified_concepts[:6]
             return result
         except Exception as e:
-            logger.error(f"Error calling live LLM audit extraction: {e}. Falling back to mock.")
+            self.trip_circuit(60.0)
+            logger.error(f"Error calling live LLM audit extraction: {e}. Circuit breaker tripped. Falling back to mock.")
             return self._mock_audit_extraction(topic_id, dialog_turns)
 
     # -----------------------------------------------------------------
@@ -325,14 +382,22 @@ class LLMService:
     def _mock_audit_extraction(self, topic_id: str, dialog_turns: List[Dict[str, str]]) -> AuditExtractionResult:
         full_text = " ".join([t.get("student", "") for t in dialog_turns])
 
-        # Канонический Use Case Студента К. (80%, underfitting, емкость)
-        if "80%" in full_text or "underfitting" in full_text.lower() or "емкост" in full_text.lower():
+        # Канонический Use Case Студента К. (80%, underfitting, емкость) - ТОЛЬКО для Недели 9 / регуляризации
+        resolved = resolve_topic_id(topic_id)
+        if resolved in ("week_09_deep_learning", "topic_05_regularization") and (
+            "80%" in full_text or "underfitting" in full_text.lower() or "емкост" in full_text.lower()
+        ):
+            extracted_quotes = [t.get("student", "") for t in dialog_turns if t.get("student")]
+            if not extracted_quotes:
+                extracted_quotes = [
+                    "Переобучение происходит, когда веса подстраиваются под шум выборки, создавая избыточную ко-адаптацию (co-adaptation) нейронов.",
+                    "Dropout случайным образом обнуляет активации с вероятностью p, обеспечивая регуляризацию.",
+                    "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? "
+                    "В какой момент этот компромисс (dropout rate trade-off) сломает обучение и вызовет потерю емкости сети (model capacity, underfitting)?",
+                ]
             return AuditExtractionResult(
                 on_topic=True,
-                student_quotes=[
-                    "Если Dropout так эффективен, почему бы нам не выключать 80% нейронов для максимальной регуляризации? "
-                    "В какой момент это сломает обучение и вызовет потерю емкости сети (underfitting)?"
-                ],
+                student_quotes=extracted_quotes,
                 mastered_concepts=[
                     "co-adaptation",
                     "model capacity",

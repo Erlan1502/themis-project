@@ -16,6 +16,7 @@ ingestion_service.py
 import os
 import re
 import json
+import hashlib
 import logging
 import asyncio
 from typing import List, Dict, Any, Optional, Tuple
@@ -38,6 +39,30 @@ logger = logging.getLogger("themis.ingestion")
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+
+CYRILLIC_TO_LATIN = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+    'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+    'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
+    'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu',
+    'я': 'ya'
+}
+
+
+def transliterate_to_slug(text: str) -> str:
+    """Транслитерация кириллического текста в латинский slug."""
+    res = []
+    for ch in text.lower():
+        if ch in CYRILLIC_TO_LATIN:
+            res.append(CYRILLIC_TO_LATIN[ch])
+        elif ch.isalnum():
+            res.append(ch)
+        else:
+            res.append('_')
+    slug = ''.join(res)
+    slug = re.sub(r'_+', '_', slug).strip('_')
+    return slug
 
 
 class CourseIngestionService:
@@ -270,12 +295,12 @@ class CourseIngestionService:
             else:
                 final_week_no = 11
 
-        # 3. Формирование слага topic_id
-        clean_slug = re.sub(r'[^a-zA-Z0-9]', '_', final_topic_name.lower()).strip('_')
-        clean_slug = re.sub(r'_+', '_', clean_slug)[:25]
+        # 3. Формирование слага topic_id с транслитерацией RU->EN и хэш-суффиксом от коллизий
+        clean_slug = transliterate_to_slug(final_topic_name)[:25].strip('_')
         if not clean_slug:
             clean_slug = f"topic_{final_week_no:02d}"
-        topic_id = f"week_{final_week_no:02d}_{clean_slug}"
+        hash_suffix = hashlib.md5(final_topic_name.encode("utf-8")).hexdigest()[:4]
+        topic_id = f"week_{final_week_no:02d}_{clean_slug}_{hash_suffix}"
 
         # 4. Извлечение доменного глоссария
         glossary = self.extract_rich_glossary(markdown_text)
@@ -308,8 +333,8 @@ class CourseIngestionService:
             },
             {
                 "turn": 3,
-                "student": f"Если гиперпараметры заданы слишком агрессивно, это приведет к потере емкости модели и недообучению, снижая {c3}. Баланс между регуляризацией и сложностью является фундаментальным компромиссом.",
-                "system": f"Блестящее системное обобщение! Баланс емкости модели и регуляризации — ключевой компромисс машинного обучения."
+                "student": f"Если гиперпараметры заданы слишком агрессивно, это приведет к деградации обобщающей способности и недообучению, снижая {c3}. Баланс между регуляризацией и сложностью является фундаментальным компромиссом.",
+                "system": f"Блестящее системное обобщение! Баланс обобщающей способности и регуляризации — ключевой компромисс машинного обучения."
             }
         ]
 

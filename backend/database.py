@@ -22,6 +22,7 @@ CANONICAL_COURSE_ID = "prog_ai_2026"
 CANONICAL_TOPIC_ID = "week_09_deep_learning"
 TOPIC_ALIASES = {
     "topic_05_regularization": "week_09_deep_learning",
+    "week_09": "week_09_deep_learning",
 }
 
 
@@ -393,17 +394,20 @@ def _init_default_student_identities():
                 "stud_aai_025": "Ксения Макарова",
             }
             default_grades = {
-                "stud_aai_042": 70.0, "stud_aai_001": 72.0, "stud_aai_002": 74.0, "stud_aai_003": 75.0,
-                "stud_aai_004": 78.0, "stud_aai_005": 80.0, "stud_aai_006": 82.0, "stud_aai_007": 85.0,
-                "stud_aai_008": 87.0, "stud_aai_009": 88.0, "stud_aai_010": 68.0, "stud_aai_011": 71.0,
-                "stud_aai_015": 73.0, "stud_aai_019": 76.0, "stud_aai_020": 86.0, "stud_aai_021": 89.0,
-                "stud_aai_022": 90.0, "stud_aai_023": 91.0, "stud_aai_024": 92.0, "stud_aai_025": 94.0,
+                "stud_aai_042": 70.0, "stud_aai_001": 85.0, "stud_aai_002": 82.0, "stud_aai_003": 79.0,
+                "stud_aai_004": 75.0, "stud_aai_005": 78.0, "stud_aai_006": 81.0, "stud_aai_007": 76.0,
+                "stud_aai_008": 72.0, "stud_aai_009": 74.0, "stud_aai_010": 73.0, "stud_aai_011": 71.0,
+                "stud_aai_015": 88.0, "stud_aai_019": 84.0, "stud_aai_020": 85.0, "stud_aai_021": 82.0,
+                "stud_aai_022": 78.0, "stud_aai_023": 76.0, "stud_aai_024": 73.0, "stud_aai_025": 70.0,
             }
             for s_id, name in student_names.items():
                 cursor.execute("""
-                    INSERT OR IGNORE INTO student_identities
+                    INSERT INTO student_identities
                     (student_id, display_name, group_id, default_grade)
                     VALUES (?, ?, 'group_1', ?)
+                    ON CONFLICT(student_id) DO UPDATE SET
+                        display_name = excluded.display_name,
+                        default_grade = excluded.default_grade
                 """, (s_id, name, default_grades.get(s_id, 75.0)))
             conn.commit()
         conn.close()
@@ -833,22 +837,36 @@ def link_telegram_identity(
     """Привязать telegram_id к существующему профилю student_id."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE student_identities 
-        SET telegram_id = ?, telegram_username = ? 
-        WHERE student_id = ?
-    """, (telegram_id, telegram_username, student_id))
-    rows_affected = cursor.rowcount
-    if rows_affected == 0:
+    try:
+        # Проверяем наличие записей с данным telegram_id (например, временный гость stud_tg_<telegram_id>)
+        cursor.execute("SELECT student_id FROM student_identities WHERE telegram_id = ? AND student_id != ?", (telegram_id, student_id))
+        conflict_rows = cursor.fetchall()
+        for row in conflict_rows:
+            old_sid = row["student_id"]
+            if old_sid.startswith("stud_tg_"):
+                # Удаляем временную запись гостя и её временные аудиты
+                cursor.execute("DELETE FROM student_audits WHERE student_id = ?", (old_sid,))
+                cursor.execute("DELETE FROM student_identities WHERE student_id = ?", (old_sid,))
+            else:
+                cursor.execute("UPDATE student_identities SET telegram_id = NULL, telegram_username = NULL WHERE student_id = ?", (old_sid,))
+
         cursor.execute("""
-            INSERT OR REPLACE INTO student_identities 
-            (student_id, telegram_id, telegram_username, display_name)
-            VALUES (?, ?, ?, ?)
-        """, (student_id, telegram_id, telegram_username, student_id))
-        rows_affected = 1
-    conn.commit()
-    conn.close()
-    return rows_affected > 0
+            UPDATE student_identities 
+            SET telegram_id = ?, telegram_username = ? 
+            WHERE student_id = ?
+        """, (telegram_id, telegram_username, student_id))
+        rows_affected = cursor.rowcount
+        if rows_affected == 0:
+            cursor.execute("""
+                INSERT OR REPLACE INTO student_identities 
+                (student_id, telegram_id, telegram_username, display_name)
+                VALUES (?, ?, ?, ?)
+            """, (student_id, telegram_id, telegram_username, student_id))
+            rows_affected = 1
+        conn.commit()
+        return rows_affected > 0
+    finally:
+        conn.close()
 
 
 def get_all_student_identities() -> List[Dict[str, Any]]:
@@ -968,6 +986,19 @@ def save_session(
     """, (session_id, student_id, course_id, resolved_topic, status))
     conn.commit()
     conn.close()
+
+
+def update_session_status(session_id: str, status: str) -> bool:
+    """Обновить статус сессии в SQLite ('ACTIVE', 'COMPLETED', 'OPTED_OUT')."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE sessions SET status = ? WHERE session_id = ?
+    """, (status, session_id))
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0
 
 
 def save_turn(

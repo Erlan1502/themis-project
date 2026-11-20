@@ -173,10 +173,15 @@ class TelegramBotService:
         """Формирует URL перехода в Telegram Mini App с параметрами темы."""
         base_url = f"{self.public_url}/tma"
         if start_param:
-            # Преобразуем алиасы deep linking (pai_week_09 -> week_09_deep_learning)
+            # Преобразуем алиасы deep linking (pai_<topic_id> -> <topic_id>)
             topic_param = start_param
-            if "week_09" in start_param:
+            if topic_param.startswith("pai_"):
+                topic_param = topic_param[4:]
+            if topic_param == "week_09":
                 topic_param = "week_09_deep_learning"
+            else:
+                from backend.database import resolve_topic_id
+                topic_param = resolve_topic_id(topic_param)
             return f"{base_url}?topic={topic_param}&start_param={start_param}"
         return base_url
 
@@ -239,6 +244,31 @@ class TelegramBotService:
                 return data
         except Exception as e:
             logger.error(f"Failed to send telegram message to {chat_id}: {e}")
+            return {"ok": False, "error": str(e)}
+
+    async def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: Optional[str] = None,
+        show_alert: bool = False
+    ) -> Dict[str, Any]:
+        """Ответ на callback_query пользователя через Telegram Bot API."""
+        if self.is_dev_mode:
+            logger.info(f"[DEV BOT] answer_callback_query: cq_id={callback_query_id}, text={text}")
+            return {"ok": True, "result": True}
+
+        api_url = f"https://api.telegram.org/bot{self.bot_token}/answerCallbackQuery"
+        payload: Dict[str, Any] = {"callback_query_id": callback_query_id}
+        if text:
+            payload["text"] = text
+            payload["show_alert"] = show_alert
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(api_url, json=payload)
+                return resp.json()
+        except Exception as e:
+            logger.error(f"Failed to answer callback query {callback_query_id}: {e}")
             return {"ok": False, "error": str(e)}
 
     async def handle_update(self, update: Dict[str, Any]) -> Dict[str, Any]:
@@ -378,24 +408,9 @@ class TelegramBotService:
                 reminder_text = (
                     "👋 Чтобы начать или продолжить сократический диалог, нажмите кнопку ниже:"
                 )
-                tma_url = self.build_tma_url()
-                keyboard = {
-                    "inline_keyboard": [
-                        [
-                            {
-                                "text": "🚀 Открыть Themis Mini App",
-                                "web_app": {"url": tma_url}
-                            }
-                        ],
-                        [
-                            {
-                                "text": "🛡 О принципах UDL и защите балла",
-                                "callback_data": "info_udl"
-                            }
-                        ]
-                    ]
-                }
+                keyboard = self.build_inline_keyboard()
                 await self.send_message(chat_id, reminder_text, reply_markup=keyboard)
+                tma_url = self.build_tma_url()
                 return {"ok": True, "action": "fallback_handled", "chat_id": chat_id, "tma_url": tma_url}
 
         # 2. Обработка callback_query
@@ -405,6 +420,9 @@ class TelegramBotService:
             cb_data = callback_query.get("data")
             from_chat = callback_query.get("message", {}).get("chat", {})
             chat_id = from_chat.get("id")
+
+            if cq_id:
+                await self.answer_callback_query(cq_id)
 
             if cb_data == "info_udl" and chat_id:
                 info_text = (

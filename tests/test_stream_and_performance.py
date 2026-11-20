@@ -261,3 +261,78 @@ def test_async_threadpool_operations():
         top_k=2
     ))
     assert isinstance(chunks, list)
+
+
+def test_llm_stream_circuit_breaker_and_recovery():
+    """Тест поведения стриминга при сбоях API, работы Circuit Breaker и маркера прерывания связи."""
+    from backend.llm_service import llm_service
+    from unittest.mock import AsyncMock, MagicMock
+
+    llm_service.reset_circuit()
+
+    # 1. Сбой до начала выдачи токенов (yielded_chars == 0) -> fallback на мок-стрим и trip circuit
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("Connection timeout 503"))
+    original_client = llm_service.client
+    original_mode = llm_service.mode
+
+    try:
+        llm_service.client = mock_client
+        llm_service.mode = "cloud"
+
+        async def run_initial_failure():
+            llm_service._client_loop = asyncio.get_running_loop()
+            llm_service.client = mock_client
+            chunks = []
+            async for chunk in llm_service.generate_socratic_reply_stream(
+                topic_id="week_09_deep_learning",
+                turn_number=1,
+                student_message="тест",
+                history=[]
+            ):
+                chunks.append(chunk)
+            return "".join(chunks)
+
+        res = asyncio.run(run_initial_failure())
+        assert len(res) > 0
+        assert llm_service.is_circuit_open() is True
+    finally:
+        llm_service.client = original_client
+        llm_service.mode = original_mode
+        llm_service.reset_circuit()
+
+    # 2. Сбой посреди выдачи токенов (yielded_chars > 0) -> добавление маркера прерывания без наложения мока
+    try:
+        llm_service.mode = "cloud"
+        llm_service.reset_circuit()
+
+        async def failing_stream_generator():
+            mock_chunk = MagicMock()
+            mock_chunk.choices = [MagicMock()]
+            mock_chunk.choices[0].delta.content = "Начало сократического рассуждения"
+            yield mock_chunk
+            raise RuntimeError("Network disconnected midway")
+
+        mock_client.chat.completions.create = AsyncMock(return_value=failing_stream_generator())
+
+        async def run_mid_failure():
+            llm_service._client_loop = asyncio.get_running_loop()
+            llm_service.client = mock_client
+            chunks = []
+            async for chunk in llm_service.generate_socratic_reply_stream(
+                topic_id="week_09_deep_learning",
+                turn_number=1,
+                student_message="тест",
+                history=[]
+            ):
+                chunks.append(chunk)
+            return "".join(chunks)
+
+        res_mid = asyncio.run(run_mid_failure())
+        assert "Начало сократического рассуждения" in res_mid
+        assert "[связь прервана]" in res_mid
+        assert llm_service.is_circuit_open() is True
+    finally:
+        llm_service.client = original_client
+        llm_service.mode = original_mode
+        llm_service.reset_circuit()

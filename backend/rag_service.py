@@ -350,6 +350,11 @@ class RAGService:
         """Перезагрузка базового силлабуса и данных из SQLite."""
         self._weeks = [dict(w) for w in SYLLABUS_WEEKS]
         self._map = dict(WEEKS_BY_ID)
+        for w in self._weeks:
+            cid = w.get("course_id", "prog_ai_2026")
+            tid = w["topic_id"]
+            self._map[(cid, tid)] = w
+            self._map[(cid, resolve_topic_id(tid))] = w
         self.load_from_db()
 
     def load_from_db(self):
@@ -373,9 +378,9 @@ class RAGService:
                 topic_id = row["topic_id"]
                 course_id = row["course_id"] if "course_id" in row.keys() else "prog_ai_2026"
                 cursor.execute("""
-                    SELECT term FROM lecture_glossary 
-                    WHERE topic_id = ? OR topic_id = ?
-                """, (topic_id, resolve_topic_id(topic_id)))
+                    SELECT course_id, topic_id, term FROM lecture_glossary 
+                    WHERE (topic_id = ? OR topic_id = ?) AND (course_id = ? OR course_id IS NULL)
+                """, (topic_id, resolve_topic_id(topic_id), course_id))
                 glossary = [g["term"] for g in cursor.fetchall()]
 
                 demo_turns = None
@@ -419,22 +424,27 @@ class RAGService:
             for w in weeks
         ]
 
-    def get_topic_data(self, topic_id: str) -> Optional[Dict[str, Any]]:
+    def get_topic_data(self, topic_id: str, course_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         resolved = resolve_topic_id(topic_id)
+        if course_id:
+            if (course_id, resolved) in self._map:
+                return self._map[(course_id, resolved)]
+            if (course_id, topic_id) in self._map:
+                return self._map[(course_id, topic_id)]
         if resolved in self._map:
             return self._map[resolved]
         if topic_id in self._map:
             return self._map[topic_id]
         return None
 
-    def get_initial_prompt(self, topic_id: str) -> str:
-        data = self.get_topic_data(topic_id)
+    def get_initial_prompt(self, topic_id: str, course_id: Optional[str] = None) -> str:
+        data = self.get_topic_data(topic_id, course_id=course_id)
         if data:
             return data["initial_prompt"]
         return "Привет! Расскажи своими словами ключевые концепты сегодняшней темы лекции."
 
-    def get_glossary(self, topic_id: str) -> List[str]:
-        data = self.get_topic_data(topic_id)
+    def get_glossary(self, topic_id: str, course_id: Optional[str] = None) -> List[str]:
+        data = self.get_topic_data(topic_id, course_id=course_id)
         if data:
             return data.get("glossary", [])
         return []
@@ -477,9 +487,11 @@ class RAGService:
             self._weeks.sort(key=lambda x: x["week_number"])
 
         self._map[topic_id] = week_data
+        self._map[(course_id, topic_id)] = week_data
         resolved = resolve_topic_id(topic_id)
         if resolved != topic_id:
             self._map[resolved] = week_data
+            self._map[(course_id, resolved)] = week_data
         return week_data
 
     async def retrieve_chunks_async(

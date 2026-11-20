@@ -409,3 +409,89 @@ def test_selective_chroma_delete_on_reindex():
     # Проверяем: topic_1 удален, а topic_2 остался нетронутым!
     assert vector_store.get_topic_slides_count(topic_id=topic_1, course_id=course_id) == 0
     assert vector_store.get_topic_slides_count(topic_id=topic_2, course_id=course_id) == 1
+
+
+def test_obsolete_formats_rejected():
+    """Тест отклонения устаревших бинарных форматов .ppt и .doc."""
+    with pytest.raises(ValueError, match="Формат устарел и не поддерживается"):
+        markdown_converter.convert_file("old_presentation.ppt")
+
+    with pytest.raises(ValueError, match="Формат устарел и не поддерживается"):
+        markdown_converter.convert_file("old_document.doc")
+
+
+def test_zip_slip_protection():
+    """Тест защиты от уязвимости Zip-Slip при распаковке архивов."""
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
+        zip_path = f.name
+
+    try:
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("../../etc/passwd", "malicious content")
+
+        with pytest.raises(ValueError, match="Zip-Slip vulnerability detected"):
+            markdown_converter.convert_zip(zip_path)
+    finally:
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+
+
+def test_cyrillic_transliteration_and_collision_prevention():
+    """
+    Тест транслитерации RU->EN и хэш-суффикса:
+    - Две русскоязычные лекции на одной неделе не конфликтуют по topic_id.
+    - В demo_turns убрано слово-триггер 'емкости'.
+    """
+    res1 = ingestion_service.auto_structure_topic(
+        "# Трансформеры и Attention\nЛекция о трансформерах",
+        week_number=12,
+        topic_name="Трансформеры"
+    )
+    res2 = ingestion_service.auto_structure_topic(
+        "# Ансамбли и Градиентный Бустинг\nЛекция об ансамблях",
+        week_number=12,
+        topic_name="Ансамбли"
+    )
+
+    assert res1["topic_id"] != res2["topic_id"]
+    assert res1["topic_id"].startswith("week_12_transformery_")
+    assert res2["topic_id"].startswith("week_12_ansambli_")
+    assert len(res1["topic_id"].split("_")[-1]) == 4  # 4-символьный md5 хэш
+
+    # Проверка demo_turns
+    for turn in res1["demo_turns"]:
+        assert "потере емкости" not in turn["student"].lower()
+        assert "емкости" not in turn["system"].lower()
+
+
+def test_circuit_breaker_and_student_k_mock_scope():
+    """
+    Тест Circuit Breaker в LLMService и локализации триггера Студента К. Неделей 9:
+    - is_circuit_open / trip_circuit / reset_circuit
+    - Student K mock extraction срабатывает только для Недели 9
+    """
+    from backend.llm_service import llm_service
+
+    # 1. Circuit Breaker
+    llm_service.reset_circuit()
+    assert llm_service.is_circuit_open() is False
+    llm_service.trip_circuit(10.0)
+    assert llm_service.is_circuit_open() is True
+    llm_service.reset_circuit()
+    assert llm_service.is_circuit_open() is False
+
+    # 2. Scope триггера Студента К.
+    turns = [
+        {"student": "80% underfitting потеря емкости", "system": "Вопрос"}
+    ]
+
+    # Для Недели 9 - активируется ветка Студента К. (mastered_concepts: dropout rate trade-off, co-adaptation)
+    res_w9 = llm_service._mock_audit_extraction("week_09_deep_learning", turns)
+    assert "dropout rate trade-off" in res_w9.mastered_concepts
+    assert "co-adaptation" in res_w9.mastered_concepts
+    assert res_w9.socratic_initiative is True
+
+    # Для других тем с тем же текстом триггера ("80% underfitting емкость") - ветка Студента К. НЕ срабатывает
+    res_w1 = llm_service._mock_audit_extraction("week_01_intro", turns)
+    assert "dropout rate trade-off" not in res_w1.mastered_concepts
+    assert "co-adaptation" not in res_w1.mastered_concepts

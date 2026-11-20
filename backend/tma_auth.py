@@ -277,7 +277,7 @@ def get_or_create_telegram_student(
 
     # Синхронизация с in-memory db_records (если приложение запущено)
     try:
-        from backend.main import db_records, engine
+        from backend.main import db_records
         from backend.models_schemas import StudentAuditRecord
         if student_id not in db_records:
             rec = StudentAuditRecord(
@@ -298,7 +298,7 @@ def get_or_create_telegram_student(
                 telemetry_clean=True,
             )
             db_records[student_id] = rec
-            engine.compute_cohort_discrepancy(list(db_records.values()))
+            db_records.recompute_topic_cohort(course_id, CANONICAL_TOPIC_ID)
     except Exception as e:
         logger.debug(f"In-memory sync skipped/deferred: {e}")
 

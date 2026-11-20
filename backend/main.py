@@ -90,6 +90,7 @@ from backend.database import (
     delete_auth_session,
     create_telegram_binding_token,
     _init_default_user_credentials,
+    update_session_status,
 )
 from backend.markdown_converter import markdown_converter
 from backend.chunker import smart_chunk_markdown
@@ -146,8 +147,7 @@ async def _on_telegram_linked_broadcast(student_id: str, telegram_id: int, teleg
 
 telegram_bot.set_binding_callback(_on_telegram_linked_broadcast)
 
-# Хранилище сессий и записей в оперативной памяти (для мгновенной демонстрации и IT Fest)
-db_records: Dict[str, StudentAuditRecord] = {}
+# Хранилище сессий в оперативной памяти (для мгновенной демонстрации и IT Fest)
 db_sessions: Dict[str, Dict[str, Any]] = {}
 engine = ThemisMathEngine(
     target_turns=settings.TARGET_TURNS,
@@ -155,7 +155,270 @@ engine = ThemisMathEngine(
     density_floor=settings.DENSITY_FLOOR,
     initiative_bonus=settings.INITIATIVE_BONUS,
     sigma_min=settings.SIGMA_MIN,
+    prior_weight_n=settings.PRIOR_WEIGHT_N,
+    use_bayesian_shrinkage=settings.USE_BAYESIAN_SHRINKAGE,
 )
+
+
+class StudentRecordRegistry(dict):
+    """
+    Реестр записей студентов с поддержкой композитного ключа (student_id, course_id, resolved_topic)
+    и полной обратной совместимостью для доступа по строке student_id.
+    """
+    def __getitem__(self, key):
+        if isinstance(key, tuple) and len(key) == 3:
+            sid, cid, tid = key[0], key[1], resolve_topic_id(key[2])
+            return super().__getitem__((sid, cid, tid))
+        elif isinstance(key, str):
+            k_canon = (key, CANONICAL_COURSE_ID, CANONICAL_TOPIC_ID)
+            if super().__contains__(k_canon):
+                return super().__getitem__(k_canon)
+            for k, r in self.items():
+                if isinstance(k, tuple) and k[0] == key:
+                    return r
+            raise KeyError(key)
+        return super().__getitem__(key)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __setitem__(self, key, value):
+        if isinstance(key, tuple) and len(key) == 3:
+            sid, cid, tid = key[0], key[1], resolve_topic_id(key[2])
+            super().__setitem__((sid, cid, tid), value)
+        elif isinstance(key, str):
+            cid = getattr(value, "course_id", None) or CANONICAL_COURSE_ID
+            tid = resolve_topic_id(getattr(value, "topic_id", None) or CANONICAL_TOPIC_ID)
+            super().__setitem__((key, cid, tid), value)
+        else:
+            super().__setitem__(key, value)
+
+    def __contains__(self, key):
+        if isinstance(key, tuple) and len(key) == 3:
+            sid, cid, tid = key[0], key[1], resolve_topic_id(key[2])
+            return super().__contains__((sid, cid, tid))
+        elif isinstance(key, str):
+            if super().__contains__((key, CANONICAL_COURSE_ID, CANONICAL_TOPIC_ID)):
+                return True
+            return any(k[0] == key for k in self.keys() if isinstance(k, tuple))
+        return super().__contains__(key)
+
+    def pop(self, key, default=None):
+        if isinstance(key, tuple) and len(key) == 3:
+            sid, cid, tid = key[0], key[1], resolve_topic_id(key[2])
+            return super().pop((sid, cid, tid), default)
+        elif isinstance(key, str):
+            matches = [k for k in self.keys() if isinstance(k, tuple) and k[0] == key]
+            res = default
+            for m in matches:
+                res = super().pop(m, default)
+            return res
+        return super().pop(key, default)
+
+    def remove_student(self, student_id: str):
+        matches = [k for k in self.keys() if isinstance(k, tuple) and k[0] == student_id]
+        for m in matches:
+            super().pop(m, None)
+
+    def get_record(
+        self,
+        student_id: str,
+        course_id: str = CANONICAL_COURSE_ID,
+        topic_id: str = CANONICAL_TOPIC_ID
+    ) -> Optional[StudentAuditRecord]:
+        resolved = resolve_topic_id(topic_id)
+        k = (student_id, course_id, resolved)
+        if super().__contains__(k):
+            return super().__getitem__(k)
+        from backend.database import get_student_audit
+        row = get_student_audit(student_id, course_id, resolved)
+        if row:
+            rec = self._row_to_record(row)
+            super().__setitem__(k, rec)
+            return rec
+        return None
+
+    def get_or_create_record(
+        self,
+        student_id: str,
+        course_id: str = CANONICAL_COURSE_ID,
+        topic_id: str = CANONICAL_TOPIC_ID
+    ) -> StudentAuditRecord:
+        rec = self.get_record(student_id, course_id, topic_id)
+        if rec:
+            return rec
+        resolved = resolve_topic_id(topic_id)
+        from backend.database import get_student_identity
+        ident = get_student_identity(student_id)
+        default_grade = ident.get("default_grade", 75.0) if ident else 70.0
+        display_name = (ident.get("display_name") if ident else None) or STUDENT_NAMES_MAP.get(student_id, student_id)
+        group_id = (ident.get("group_id") if ident else None) or "group_1"
+
+        rec = StudentAuditRecord(
+            student_id=student_id,
+            course_id=course_id,
+            topic_id=resolved,
+            student_name=display_name,
+            group_id=group_id,
+            in_class_grade=default_grade,
+            session_status="OPTED_OUT",
+            turns_count=0,
+            total_tokens=0,
+            ai_depth_score=None,
+            raw_delta=0.0,
+            rectified_delta=0.0,
+            z_score=0.0,
+            zone="NO_SIGNAL",
+            telemetry_clean=True,
+        )
+        super().__setitem__((student_id, course_id, resolved), rec)
+        return rec
+
+    def get_topic_records(
+        self,
+        course_id: str = CANONICAL_COURSE_ID,
+        topic_id: str = CANONICAL_TOPIC_ID
+    ) -> List[StudentAuditRecord]:
+        resolved = resolve_topic_id(topic_id)
+        topic_recs = [r for (sid, cid, tid), r in self.items() if cid == course_id and tid == resolved]
+        if not topic_recs:
+            self._init_topic_group(course_id, resolved)
+            topic_recs = [r for (sid, cid, tid), r in self.items() if cid == course_id and tid == resolved]
+        return topic_recs
+
+    def _init_topic_group(self, course_id: str, topic_id: str):
+        from backend.database import get_all_student_audits, get_all_student_identities
+        audits = get_all_student_audits(course_id=course_id, topic_id=topic_id)
+        if audits:
+            for row in audits:
+                rec = self._row_to_record(row)
+                super().__setitem__((row["student_id"], course_id, topic_id), rec)
+            self.recompute_topic_cohort(course_id, topic_id)
+            return
+
+        idents = get_all_student_identities()
+        if idents:
+            for ident in idents:
+                sid = ident["student_id"]
+                if ident.get("group_id", "group_1") != "group_1":
+                    continue
+                rec = StudentAuditRecord(
+                    student_id=sid,
+                    course_id=course_id,
+                    topic_id=topic_id,
+                    student_name=ident.get("display_name") or STUDENT_NAMES_MAP.get(sid, sid),
+                    group_id=ident.get("group_id", "group_1"),
+                    in_class_grade=ident.get("default_grade", 75.0),
+                    session_status="OPTED_OUT",
+                    turns_count=0,
+                    total_tokens=0,
+                    ai_depth_score=None,
+                    raw_delta=0.0,
+                    rectified_delta=0.0,
+                    z_score=0.0,
+                    zone="NO_SIGNAL",
+                    telemetry_clean=True,
+                )
+                super().__setitem__((sid, course_id, topic_id), rec)
+        else:
+            for sid in GROUP_1_STUDENT_IDS:
+                name = STUDENT_NAMES_MAP.get(sid, sid)
+                rec = StudentAuditRecord(
+                    student_id=sid,
+                    course_id=course_id,
+                    topic_id=topic_id,
+                    student_name=name,
+                    group_id="group_1",
+                    in_class_grade=75.0,
+                    session_status="OPTED_OUT",
+                    turns_count=0,
+                    total_tokens=0,
+                    ai_depth_score=None,
+                    raw_delta=0.0,
+                    rectified_delta=0.0,
+                    z_score=0.0,
+                    zone="NO_SIGNAL",
+                    telemetry_clean=True,
+                )
+                super().__setitem__((sid, course_id, topic_id), rec)
+        self.recompute_topic_cohort(course_id, topic_id)
+
+    def recompute_topic_cohort(
+        self,
+        course_id: str = CANONICAL_COURSE_ID,
+        topic_id: str = CANONICAL_TOPIC_ID
+    ) -> Dict[str, Any]:
+        resolved = resolve_topic_id(topic_id)
+        topic_recs = [r for (sid, cid, tid), r in self.items() if cid == course_id and tid == resolved]
+        if topic_recs:
+            return engine.compute_cohort_discrepancy(topic_recs)
+        return {}
+
+    def _row_to_record(self, row: Dict[str, Any]) -> StudentAuditRecord:
+        extraction = None
+        if row.get("extraction_json"):
+            try:
+                extraction = AuditExtractionResult.model_validate_json(row["extraction_json"])
+            except Exception:
+                extraction = None
+        rec = StudentAuditRecord(
+            student_id=row["student_id"],
+            course_id=row.get("course_id", CANONICAL_COURSE_ID),
+            topic_id=row.get("topic_id", CANONICAL_TOPIC_ID),
+            student_name=row.get("student_name") or STUDENT_NAMES_MAP.get(row["student_id"], row["student_id"]),
+            group_id=row.get("group_id", "group_1"),
+            in_class_grade=row["in_class_grade"],
+            session_status=row["session_status"],
+            turns_count=row["turns_count"] or 0,
+            total_tokens=row["total_tokens"] or 0,
+            extraction=extraction,
+            ai_depth_score=row["ai_depth_score"],
+            raw_delta=row["raw_delta"] or 0.0,
+            rectified_delta=row["rectified_delta"] or 0.0,
+            z_score=row["z_score"] or 0.0,
+            zone=row["zone"] or "NO_SIGNAL",
+            telemetry_clean=bool(row.get("telemetry_clean", 1)),
+            teacher_decision=row.get("teacher_decision"),
+        )
+        if rec.extraction and rec.turns_count >= settings.TARGET_TURNS:
+            engine.compute_individual_depth(rec)
+        return rec
+
+
+db_records = StudentRecordRegistry()
+
+
+def get_record(
+    student_id: str,
+    course_id: str = CANONICAL_COURSE_ID,
+    topic_id: str = CANONICAL_TOPIC_ID
+) -> Optional[StudentAuditRecord]:
+    return db_records.get_record(student_id, course_id, topic_id)
+
+
+def get_or_create_record(
+    student_id: str,
+    course_id: str = CANONICAL_COURSE_ID,
+    topic_id: str = CANONICAL_TOPIC_ID
+) -> StudentAuditRecord:
+    return db_records.get_or_create_record(student_id, course_id, topic_id)
+
+
+def get_topic_records(
+    course_id: str = CANONICAL_COURSE_ID,
+    topic_id: str = CANONICAL_TOPIC_ID
+) -> List[StudentAuditRecord]:
+    return db_records.get_topic_records(course_id, topic_id)
+
+
+def recompute_topic_cohort(
+    course_id: str = CANONICAL_COURSE_ID,
+    topic_id: str = CANONICAL_TOPIC_ID
+) -> Dict[str, Any]:
+    return db_records.recompute_topic_cohort(course_id, topic_id)
 
 
 def sync_records_to_sqlite():
@@ -196,35 +459,13 @@ def reset_database(load_from_db_if_exists: bool = False):
     existing_audits = get_all_student_audits() if load_from_db_if_exists else []
     if existing_audits:
         for row in existing_audits:
-            extraction = None
-            if row.get("extraction_json"):
-                try:
-                    extraction = AuditExtractionResult.model_validate_json(row["extraction_json"])
-                except Exception:
-                    extraction = None
-            rec = StudentAuditRecord(
-                student_id=row["student_id"],
-                course_id=row.get("course_id", CANONICAL_COURSE_ID),
-                topic_id=row.get("topic_id", CANONICAL_TOPIC_ID),
-                student_name=row.get("student_name") or STUDENT_NAMES_MAP.get(row["student_id"], row["student_id"]),
-                group_id=row.get("group_id", "group_1"),
-                in_class_grade=row["in_class_grade"],
-                session_status=row["session_status"],
-                turns_count=row["turns_count"] or 0,
-                total_tokens=row["total_tokens"] or 0,
-                extraction=extraction,
-                ai_depth_score=row["ai_depth_score"],
-                raw_delta=row["raw_delta"] or 0.0,
-                rectified_delta=row["rectified_delta"] or 0.0,
-                z_score=row["z_score"] or 0.0,
-                zone=row["zone"] or "NO_SIGNAL",
-                telemetry_clean=bool(row.get("telemetry_clean", 1)),
-                teacher_decision=row.get("teacher_decision"),
-            )
-            if rec.extraction and rec.turns_count >= settings.TARGET_TURNS:
-                engine.compute_individual_depth(rec)
-            db_records[row["student_id"]] = rec
-        engine.compute_cohort_discrepancy(list(db_records.values()))
+            rec = db_records._row_to_record(row)
+            cid = rec.course_id or CANONICAL_COURSE_ID
+            tid = resolve_topic_id(rec.topic_id or CANONICAL_TOPIC_ID)
+            db_records[(rec.student_id, cid, tid)] = rec
+        pairs = set((cid, tid) for (sid, cid, tid) in db_records.keys() if isinstance((sid, cid, tid), tuple))
+        for cid, tid in pairs:
+            db_records.recompute_topic_cohort(cid, tid)
     else:
         conn = get_connection()
         c = conn.cursor()
@@ -242,7 +483,10 @@ def reset_database(load_from_db_if_exists: bool = False):
 
         seed_records = get_canonical_seed_records()
         for rec in seed_records:
-            db_records[rec.student_id] = rec
+            cid = getattr(rec, "course_id", CANONICAL_COURSE_ID)
+            tid = resolve_topic_id(getattr(rec, "topic_id", CANONICAL_TOPIC_ID))
+            db_records[(rec.student_id, cid, tid)] = rec
+        db_records.recompute_topic_cohort(CANONICAL_COURSE_ID, CANONICAL_TOPIC_ID)
         seed_sqlite_dialogs()
         sync_records_to_sqlite()
         _init_default_user_credentials()
@@ -286,23 +530,28 @@ async def run_background_audit(
     рассчитывает ThemisMathEngine, обновляет статус сессии на COMPLETED,
     сохраняет аудит в SQLite и рассылает live-событие подписчикам /api/v1/events/audit-stream.
     """
+    resolved_topic = resolve_topic_id(topic_id)
+    course_id = db_sessions.get(session_id, {}).get("course_id", CANONICAL_COURSE_ID) if session_id else CANONICAL_COURSE_ID
     try:
-        rec = db_records.get(student_id)
+        rec = db_records.get_record(student_id, course_id, resolved_topic)
+        if not rec:
+            rec = db_records.get(student_id)
         if not rec:
             return
 
         extraction = await llm_service.extract_audit_evidence(
-            topic_id=topic_id,
+            topic_id=resolved_topic,
             dialog_turns=dialog_turns,
         )
         rec.extraction = extraction
         rec.session_status = "COMPLETED"
         engine.compute_individual_depth(rec)
-        engine.compute_cohort_discrepancy(list(db_records.values()))
-        # Сессия остается активной (active=True), чтобы студент мог продолжать
-        # диалог (Шаг 4, Шаг 5 и т.д.) до истечения таймера окна доступа
-        if session_id and session_id in db_sessions:
-            db_sessions[session_id]["active"] = True
+        db_records.recompute_topic_cohort(rec.course_id, rec.topic_id)
+
+        if session_id:
+            update_session_status(session_id, "COMPLETED")
+            if session_id in db_sessions:
+                db_sessions[session_id]["active"] = True
 
         sync_records_to_sqlite()
 
@@ -329,7 +578,45 @@ async def run_background_audit(
         })
         logger.info(f"Фоновый аудит студента {student_id} успешно завершен и отправлен в SSE-стрим.")
     except Exception as e:
-        logger.error(f"Ошибка при выполнении фонового аудита {student_id}: {e}", exc_info=True)
+        logger.error(f"Ошибка при выполнении фонового аудита {student_id}: {e}. Выполняется детерминированный fallback.", exc_info=True)
+        try:
+            rec = db_records.get_record(student_id, course_id, resolved_topic)
+            if not rec:
+                rec = db_records.get(student_id)
+            if rec:
+                rec.extraction = llm_service._mock_audit_extraction(resolved_topic, dialog_turns)
+                rec.session_status = "COMPLETED"
+                engine.compute_individual_depth(rec)
+                db_records.recompute_topic_cohort(rec.course_id, rec.topic_id)
+                if session_id:
+                    update_session_status(session_id, "COMPLETED")
+                    if session_id in db_sessions:
+                        db_sessions[session_id]["active"] = True
+                sync_records_to_sqlite()
+                display_name = getattr(rec, "student_name", None) or STUDENT_NAMES_MAP.get(rec.student_id, rec.student_id)
+                record_payload = {
+                    "student_id": rec.student_id,
+                    "student_name": display_name,
+                    "group_id": getattr(rec, "group_id", "group_1"),
+                    "in_class_grade": rec.in_class_grade,
+                    "ai_depth_score": rec.ai_depth_score,
+                    "raw_delta": rec.raw_delta,
+                    "rectified_delta": rec.rectified_delta,
+                    "z_score": rec.z_score,
+                    "zone": rec.zone,
+                    "session_status": rec.session_status,
+                    "telemetry_clean": rec.telemetry_clean,
+                    "teacher_decision": rec.teacher_decision,
+                    "has_report": rec.extraction is not None,
+                }
+                await audit_broadcaster.broadcast({
+                    "type": "audit_completed",
+                    "student_id": rec.student_id,
+                    "record": record_payload,
+                })
+                logger.info(f"Fallback-аудит студента {student_id} успешно завершен и отправлен в SSE-стрим.")
+        except Exception as fallback_err:
+            logger.error(f"Критическая ошибка в fallback фонового аудита: {fallback_err}", exc_info=True)
 
 
 @asynccontextmanager
@@ -531,15 +818,6 @@ async def upload_course_lecture(
                 "message": f"Файл принят в обработку. Отслеживайте прогресс по /api/v1/course/jobs/{job_id}"
             }
         )
-        return JSONResponse(
-            status_code=202,
-            content={
-                "job_id": job_id,
-                "course_id": course_id,
-                "status": "QUEUED",
-                "message": f"Файл принят в обработку. Отслеживайте прогресс по /api/v1/course/jobs/{job_id}"
-            }
-        )
 
     # Синхронный режим (обратная совместимость с существующими интеграционными тестами)
     wn = week_number if week_number is not None else 11
@@ -625,13 +903,22 @@ async def upload_course_lecture(
 
 
 @app.get("/api/v1/students")
-async def get_students_list(group_id: Optional[str] = Query(None)):
+async def get_students_list(
+    group_id: Optional[str] = Query(None),
+    course_id: Optional[str] = Query(None),
+    topic_id: Optional[str] = Query(None)
+):
     """
     Эндпоинт получения списка студентов группы (по умолчанию Группа 1: 20 студентов).
     Каждый студент представлен отдельным персональным инстансом с метаданными.
+    Поддерживает фильтрацию по курсу (course_id) и теме (topic_id).
     """
+    target_course = course_id or CANONICAL_COURSE_ID
+    target_topic = resolve_topic_id(topic_id or CANONICAL_TOPIC_ID)
+    records_list = db_records.get_topic_records(target_course, target_topic)
+
     students = []
-    for r in db_records.values():
+    for r in records_list:
         rec_group = getattr(r, "group_id", "group_1")
         if group_id and rec_group != group_id:
             continue
@@ -800,14 +1087,15 @@ async def start_session(req: SessionStartRequest, request: Request):
     # Создаем новую сессию
     session_id = f"sess_{uuid.uuid4().hex[:8]}"
 
-    # Регистрируем студента в реестре, если его еще нет
-    if req.student_id not in db_records:
+    # Получаем или создаем запись студента в реестре для конкретной темы и курса
+    rec = db_records.get_record(req.student_id, req.course_id, resolved_topic)
+    if not rec:
         identity = get_student_identity(req.student_id)
         init_grade = identity.get("default_grade", 75.0) if identity else 70.0
         disp_name = (identity.get("display_name") if identity else None) or STUDENT_NAMES_MAP.get(req.student_id, req.student_id)
         grp_id = (identity.get("group_id") if identity else None) or "group_1"
 
-        db_records[req.student_id] = StudentAuditRecord(
+        rec = StudentAuditRecord(
             student_id=req.student_id,
             course_id=req.course_id,
             topic_id=resolved_topic,
@@ -819,6 +1107,7 @@ async def start_session(req: SessionStartRequest, request: Request):
             total_tokens=0,
             telemetry_clean=True,
         )
+        db_records[(req.student_id, req.course_id, resolved_topic)] = rec
 
     db_sessions[session_id] = {
         "student_id": req.student_id,
@@ -881,7 +1170,11 @@ async def dialog_turn(req: DialogTurnRequest):
         raise HTTPException(status_code=404, detail="Session not found")
 
     student_id = session["student_id"]
-    record = db_records.get(student_id)
+    course_id = session.get("course_id", CANONICAL_COURSE_ID)
+    topic_id = session.get("topic_id", CANONICAL_TOPIC_ID)
+    record = db_records.get_record(student_id, course_id, topic_id)
+    if not record:
+        record = db_records.get(student_id)
     if not record:
         raise HTTPException(status_code=404, detail="Student record not found")
 
@@ -973,6 +1266,7 @@ async def dialog_turn(req: DialogTurnRequest):
     # При достижении целевого числа реплик (Target = 3) запускаем Слой 3A и 3B
     if turn_number >= settings.TARGET_TURNS:
         record.session_status = "COMPLETED"
+        update_session_status(req.session_id, "COMPLETED")
         valid_dialog_turns = [t for t in session["turns"] if not t.get("is_duplicate")]
         # Слой 3A: Извлечение доказательств аудита
         extraction = await llm_service.extract_audit_evidence(
@@ -982,8 +1276,8 @@ async def dialog_turn(req: DialogTurnRequest):
         record.extraction = extraction
         # Вычисляем глубину S_depth
         engine.compute_individual_depth(record)
-        # Слой 3B: Обновляем когортное распределение
-        engine.compute_cohort_discrepancy(list(db_records.values()))
+        # Слой 3B: Обновляем когортное распределение темы
+        db_records.recompute_topic_cohort(course_id, topic_id)
         confidence_str = f"HIGH (N = {turn_number}/{settings.TARGET_TURNS})"
         display_name = getattr(record, "student_name", None) or STUDENT_NAMES_MAP.get(record.student_id, record.student_id)
         await audit_broadcaster.broadcast({
@@ -1012,16 +1306,35 @@ async def dialog_turn(req: DialogTurnRequest):
     # Сохраняем в SQLite для персистентности
     sync_records_to_sqlite()
 
+    # Извлечение источников для трансляции
+    sources = []
+    try:
+        rag_chunks = rag_service.retrieve_chunks(req.student_message, topic_id, course_id=course_id, top_k=3)
+        sources = [
+            {
+                "slide_number": idx + 1,
+                "title": c.get("title", "Материал силлабуса"),
+                "similarity": 0.85,
+                "content": c.get("content", "")[:250],
+            }
+            for idx, c in enumerate(rag_chunks)
+        ]
+    except Exception:
+        sources = []
+
     # Двусторонняя реактивная синхронизация шагов диалога (TMA <-> Web)
     await audit_broadcaster.broadcast({
         "type": "dialog_turn_sync",
         "session_id": req.session_id,
         "student_id": record.student_id,
+        "course_id": course_id,
+        "topic_id": topic_id,
         "turn_number": turn_number,
         "student_message": req.student_message,
         "tutor_message": system_reply,
         "session_status": record.session_status,
         "ai_depth_score": record.ai_depth_score,
+        "sources": sources,
     })
 
     return DialogTurnResponse(
@@ -1077,7 +1390,11 @@ async def dialog_turn_stream(req: DialogTurnRequest, request: Request, backgroun
         raise HTTPException(status_code=404, detail="Session not found")
 
     student_id = session["student_id"]
-    record = db_records.get(student_id)
+    course_id = session.get("course_id", CANONICAL_COURSE_ID)
+    topic_id = session.get("topic_id", CANONICAL_TOPIC_ID)
+    record = db_records.get_record(student_id, course_id, topic_id)
+    if not record:
+        record = db_records.get(student_id)
     if not record:
         raise HTTPException(status_code=404, detail="Student record not found")
 
@@ -1238,11 +1555,14 @@ async def dialog_turn_stream(req: DialogTurnRequest, request: Request, backgroun
                 "type": "dialog_turn_sync",
                 "session_id": req.session_id,
                 "student_id": record.student_id,
+                "course_id": course_id,
+                "topic_id": topic_id,
                 "turn_number": turn_number,
                 "student_message": req.student_message,
                 "tutor_message": system_reply,
                 "session_status": record.session_status,
                 "ai_depth_score": record.ai_depth_score,
+                "sources": sources,
             })
 
             turn_response = {
@@ -1349,7 +1669,7 @@ async def sync_in_class_grades(req: GradeSyncRequest):
             db_records[item.student_id] = rec
             synced += 1
 
-    summary = engine.compute_cohort_discrepancy(list(db_records.values()))
+    summary = db_records.recompute_topic_cohort(req.course_id, resolved_topic)
     sync_records_to_sqlite()
     return GradeSyncResponse(
         status="SUCCESS",
@@ -1369,11 +1689,7 @@ async def get_audit_dashboard(
     Поддерживает фильтрацию по курсу (course_id), теме (topic_id) и группе (group_id).
     """
     resolved_topic = resolve_topic_id(topic_id)
-    records_list = [
-        r for r in db_records.values()
-        if getattr(r, "course_id", "prog_ai_2026") == course_id
-        and resolve_topic_id(getattr(r, "topic_id", CANONICAL_TOPIC_ID)) == resolved_topic
-    ]
+    records_list = db_records.get_topic_records(course_id, resolved_topic)
     if group_id:
         records_list = [r for r in records_list if getattr(r, "group_id", "group_1") == group_id]
 
@@ -1437,13 +1753,7 @@ async def get_student_report(
     Предоставляет преподавателю цитаты, концепты и психометрические основания.
     """
     resolved_topic = resolve_topic_id(topic_id)
-    rec = None
-    for r in db_records.values():
-        if (r.student_id == student_id and 
-            getattr(r, "course_id", "prog_ai_2026") == course_id and 
-            resolve_topic_id(getattr(r, "topic_id", CANONICAL_TOPIC_ID)) == resolved_topic):
-            rec = r
-            break
+    rec = db_records.get_record(student_id, course_id, resolved_topic)
     if not rec:
         rec = db_records.get(student_id)
 
@@ -1457,7 +1767,7 @@ async def get_student_report(
         )
 
     ext = rec.extraction
-    if rec.e_d_squared is None and rec.extraction:
+    if (rec.e_d_squared is None or rec.agg_probabilities == (0.0, 0.0, 0.0)) and rec.extraction:
         engine.compute_individual_depth(rec)
     p1, p2, p3 = rec.agg_probabilities
 
@@ -1517,6 +1827,35 @@ async def get_student_report(
         # NO_SIGNAL или прочие
         recommended_action = "Сессия не завершена или студент не участвовал в диалоге. Очная оценка преподавателя остается без изменений."
 
+    # Извлекаем транскрипт диалога студента из SQLite или оперативной памяти
+    dialog_transcript = []
+    latest_sess = get_latest_session_for_student(student_id=student_id, topic_id=resolved_topic, course_id=course_id)
+    if latest_sess:
+        turns = get_turns(latest_sess["session_id"])
+        dialog_transcript = [
+            {
+                "turn_number": t["turn_number"],
+                "student_message": t["student_message"],
+                "system_reply": t["system_reply"],
+            }
+            for t in turns
+            if not t.get("is_duplicate")
+        ]
+    if not dialog_transcript:
+        for s_id, s_data in db_sessions.items():
+            if s_data.get("student_id") == student_id and resolve_topic_id(s_data.get("topic_id")) == resolved_topic:
+                dialog_transcript = [
+                    {
+                        "turn_number": t.get("turn_number", idx + 1),
+                        "student_message": t.get("student", ""),
+                        "system_reply": t.get("system", ""),
+                    }
+                    for idx, t in enumerate(s_data.get("turns", []))
+                    if not t.get("is_duplicate")
+                ]
+                if dialog_transcript:
+                    break
+
     return AIReportResponse(
         student_id=rec.student_id,
         in_class_grade=rec.in_class_grade,
@@ -1531,6 +1870,8 @@ async def get_student_report(
         solo_analysis=solo_analysis,
         evidence=evidence,
         recommended_action=recommended_action,
+        dialog_transcript=dialog_transcript,
+        telemetry_clean=getattr(rec, "telemetry_clean", True),
     )
 
 
@@ -1548,15 +1889,7 @@ async def submit_teacher_decision(req: TeacherDecisionRequest):
     resolved_topic = resolve_topic_id(req.topic_id)
 
     # 1. Поиск записи студента
-    target_rec = None
-    for r in db_records.values():
-        if (
-            r.student_id == req.student_id
-            and getattr(r, "course_id", "prog_ai_2026") == req.course_id
-            and resolve_topic_id(getattr(r, "topic_id", CANONICAL_TOPIC_ID)) == resolved_topic
-        ):
-            target_rec = r
-            break
+    target_rec = db_records.get_record(req.student_id, req.course_id, resolved_topic)
     if not target_rec:
         target_rec = db_records.get(req.student_id)
 
@@ -1604,8 +1937,8 @@ async def submit_teacher_decision(req: TeacherDecisionRequest):
         target_rec.teacher_decision = decision_str
         message = f"Ректификация принята. Оценка студента {req.student_id} обновлена: {previous_grade} -> {updated_grade}."
 
-        # Реактивный пересчет когортного распределения (Этап 3B)
-        engine.compute_cohort_discrepancy(list(db_records.values()))
+        # Реактивный пересчет когортного распределения темы (Этап 3B)
+        db_records.recompute_topic_cohort(target_rec.course_id, target_rec.topic_id)
 
     elif req.action == "REJECT":
         comment_part = f" ({req.comment})" if req.comment else ""
@@ -1624,6 +1957,14 @@ async def submit_teacher_decision(req: TeacherDecisionRequest):
 
     # Персистентное сохранение в SQLite
     sync_records_to_sqlite()
+
+    # Публикация SSE-события об обновлении когорты
+    await audit_broadcaster.broadcast({
+        "type": "cohort_updated",
+        "course_id": target_rec.course_id,
+        "topic_id": target_rec.topic_id,
+        "student_id": req.student_id,
+    })
 
     return TeacherDecisionResponse(
         status="SUCCESS",
@@ -1666,6 +2007,11 @@ async def system_health():
         db_status = f"error: {str(e)}"
 
     # 2. Проверка векторного хранилища ChromaDB
+    v_status_info = vector_store.get_status() if hasattr(vector_store, "get_status") else {}
+    is_degraded = getattr(vector_store, "is_degraded", False)
+    dim = getattr(vector_store, "dimension", 1024)
+    model = v_status_info.get("model", "BAAI/bge-m3")
+
     v_status = "ready"
     collection_count = 0
     try:
@@ -1676,21 +2022,29 @@ async def system_health():
     except Exception as e:
         v_status = f"error: {str(e)}"
 
+    if is_degraded:
+        v_status = "degraded"
+
     return SystemHealthResponse(
-        status="OK" if db_status == "connected" and "error" not in v_status else "DEGRADED",
+        status="OK" if db_status == "connected" and "error" not in v_status and not is_degraded else "DEGRADED",
         database=db_status,
         llm_mode=settings.LLM_MODE,
         vector_store=VectorStoreHealth(
             status=v_status,
             collection_count=collection_count,
-            dimension=1024,
-            model="BAAI/bge-m3",
+            dimension=dim,
+            model=model,
+            is_degraded=is_degraded,
         ),
     )
 
 
 @app.post("/api/v1/student/{student_id}/reset")
-async def reset_single_student(student_id: str):
+async def reset_single_student(
+    student_id: str,
+    course_id: Optional[str] = Query(None),
+    topic_id: Optional[str] = Query(None)
+):
     """
     Сброс конкретного студента до начального состояния:
     - Очищает историю диалогов и сессий в SQLite и в памяти
@@ -1699,7 +2053,13 @@ async def reset_single_student(student_id: str):
     - Пересчитывает когортные метрики ThemisMathEngine
     - Синхронизирует обновленное состояние в SQLite
     """
-    if student_id not in db_records:
+    target_course = course_id or CANONICAL_COURSE_ID
+    target_topic = resolve_topic_id(topic_id or CANONICAL_TOPIC_ID)
+
+    record = db_records.get_record(student_id, target_course, target_topic)
+    if not record:
+        record = db_records.get(student_id)
+    if not record:
         raise HTTPException(status_code=404, detail="Студент не найден в когорте")
 
     # 1. Удаляем сессии студента из оперативной памяти
@@ -1714,7 +2074,6 @@ async def reset_single_student(student_id: str):
     delete_student_dialogs(student_id)
 
     # 3. Сбрасываем запись студента
-    record = db_records[student_id]
     record.session_status = "OPTED_OUT"
     record.turns_count = 0
     record.total_tokens = 0
@@ -1725,11 +2084,19 @@ async def reset_single_student(student_id: str):
     record.zone = "NO_SIGNAL"
     record.extraction = None
 
-    # 4. Пересчитываем когортные метрики среди оставшихся завершенных сессий
-    engine.compute_cohort_discrepancy(list(db_records.values()))
+    # 4. Пересчитываем когортные метрики темы
+    db_records.recompute_topic_cohort(target_course, target_topic)
 
     # 5. Синхронизируем всех студентов в SQLite
     sync_records_to_sqlite()
+
+    # 6. Рассылаем SSE-событие об обновлении когорты
+    await audit_broadcaster.broadcast({
+        "type": "cohort_updated",
+        "course_id": target_course,
+        "topic_id": target_topic,
+        "student_id": student_id,
+    })
 
     return {
         "status": "SUCCESS",
@@ -1749,9 +2116,11 @@ async def restore_canonical_student(student_id: str):
     """
     Восстановление канонического эталонного состояния студента (для быстрой демонстрации Студента К. 93.5).
     """
+    target_course = CANONICAL_COURSE_ID
+    target_topic = CANONICAL_TOPIC_ID
     if student_id == "stud_aai_042":
         target_canonical = get_canonical_benchmark_stud_k()
-        db_records[student_id] = target_canonical
+        db_records[(student_id, target_course, target_topic)] = target_canonical
         seed_canonical_stud_k_dialog()
         db_sessions["sess_canonical_stud_k"] = {
             "student_id": "stud_aai_042",
@@ -1791,10 +2160,19 @@ async def restore_canonical_student(student_id: str):
         target_canonical = next((r for r in canonical_list if r.student_id == student_id), None)
         if not target_canonical:
             raise HTTPException(status_code=404, detail="Каноническая запись для студента не найдена")
-        db_records[student_id] = target_canonical
+        target_course = getattr(target_canonical, "course_id", CANONICAL_COURSE_ID)
+        target_topic = resolve_topic_id(getattr(target_canonical, "topic_id", CANONICAL_TOPIC_ID))
+        db_records[(student_id, target_course, target_topic)] = target_canonical
 
-    engine.compute_cohort_discrepancy(list(db_records.values()))
+    db_records.recompute_topic_cohort(target_course, target_topic)
     sync_records_to_sqlite()
+
+    await audit_broadcaster.broadcast({
+        "type": "cohort_updated",
+        "course_id": target_course,
+        "topic_id": target_topic,
+        "student_id": student_id,
+    })
 
     return {
         "status": "SUCCESS",
@@ -1814,6 +2192,12 @@ async def demo_reset():
     Эндпоинт 6: Сброс базы данных до исходного канонического состояния (Use Case).
     """
     reset_database(load_from_db_if_exists=False)
+    await audit_broadcaster.broadcast({
+        "type": "cohort_updated",
+        "course_id": CANONICAL_COURSE_ID,
+        "topic_id": CANONICAL_TOPIC_ID,
+        "student_id": "stud_aai_042",
+    })
     return {"status": "SUCCESS", "message": "Demo data reset to canonical 20-student cohort."}
 
 
@@ -1937,6 +2321,7 @@ async def session_opt_out(request: Request, payload: Optional[Dict[str, Any]] = 
             s_data["active"] = False
 
     for s_id in sessions_to_close:
+        update_session_status(s_id, "OPTED_OUT")
         if s_id in db_sessions:
             del db_sessions[s_id]
 
@@ -1944,6 +2329,8 @@ async def session_opt_out(request: Request, payload: Optional[Dict[str, Any]] = 
 
     # Сбрасываем статус записи в db_records
     rec = db_records.get(student_id)
+    target_course = getattr(rec, "course_id", CANONICAL_COURSE_ID) if rec else CANONICAL_COURSE_ID
+    target_topic = resolve_topic_id(getattr(rec, "topic_id", CANONICAL_TOPIC_ID)) if rec else CANONICAL_TOPIC_ID
     if rec:
         rec.session_status = "OPTED_OUT"
         rec.turns_count = 0
@@ -1953,13 +2340,20 @@ async def session_opt_out(request: Request, payload: Optional[Dict[str, Any]] = 
         rec.z_score = 0.0
         rec.zone = "NO_SIGNAL"
         rec.extraction = None
-        engine.compute_cohort_discrepancy(list(db_records.values()))
+        db_records.recompute_topic_cohort(target_course, target_topic)
         sync_records_to_sqlite()
         grade = rec.in_class_grade
     else:
         identity = get_student_identity(student_id)
         grade = identity.get("default_grade", 75.0) if identity else 75.0
         reset_student_in_db(student_id, default_in_class_grade=grade)
+
+    await audit_broadcaster.broadcast({
+        "type": "cohort_updated",
+        "course_id": target_course,
+        "topic_id": target_topic,
+        "student_id": student_id,
+    })
 
     return {
         "status": "OPTED_OUT",
@@ -2097,7 +2491,8 @@ async def auth_telegram_qr(student_id: str = Query(...)):
         token=token,
         deep_link=deep_link,
         expires_in=900,
-        qr_code_url=qr_url
+        qr_code_url=qr_url,
+        bot_username=bot_username
     )
 
 

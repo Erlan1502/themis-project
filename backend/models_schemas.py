@@ -181,6 +181,8 @@ class AIReportResponse(BaseModel):
     solo_analysis: ReportSOLOAnalysis
     evidence: ReportEvidence
     recommended_action: str
+    dialog_transcript: List[Dict[str, Any]] = Field(default_factory=list)
+    telemetry_clean: bool = True
 
 
 class TeacherDecisionRequest(BaseModel):
@@ -210,6 +212,7 @@ class VectorStoreHealth(BaseModel):
     collection_count: int
     dimension: int
     model: str
+    is_degraded: bool = False
 
 
 class SystemHealthResponse(BaseModel):
@@ -276,6 +279,7 @@ class TelegramQrResponse(BaseModel):
     deep_link: str
     expires_in: int = 900
     qr_code_url: Optional[str] = None
+    bot_username: str = "ThemisExamBot"
 
 
 

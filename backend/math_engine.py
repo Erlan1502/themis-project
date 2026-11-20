@@ -22,7 +22,7 @@ class ThemisMathEngine:
     """Детерминированный вычислитель диагностических метрик Themis Project."""
 
     # Канонические веса прогрессивной свёртки для 3-шагового сократического диалога
-    CANONICAL_3TURN_WEIGHTS: Tuple[float, float, float] = (0.0556, 0.1320, 0.8124)
+    CANONICAL_3TURN_WEIGHTS: Tuple[float, float, float] = (0.0556, 0.1215, 0.8229)
 
     def __init__(
         self,
@@ -59,7 +59,14 @@ class ThemisMathEngine:
             # Нормированные прогрессивные веса 3-шаговой сократической сессии:
             # w1 = 0.0556 (разогревочный шаг 1/18), w2 = 0.1215, w3 = 0.8229 (прогрессия SOLO)
             # Честная математическая свёртка без частных if-паттернов
-            weights = np.array([self.CANONICAL_3TURN_WEIGHTS[0], 0.1215, 0.8229], dtype=float)
+            weights = np.array(
+                [
+                    self.CANONICAL_3TURN_WEIGHTS[0],
+                    self.CANONICAL_3TURN_WEIGHTS[1],
+                    self.CANONICAL_3TURN_WEIGHTS[2],
+                ],
+                dtype=float,
+            )
             weights /= np.sum(weights)
         else:
             # Экспоненциальное взвешивание для произвольного числа реплик
@@ -136,12 +143,14 @@ class ThemisMathEngine:
             from backend.rag_service import rag_service
             glossary = rag_service.get_glossary(topic_id)
             if glossary:
+                student_text = " ".join(record.extraction.student_quotes) if record.extraction.student_quotes else ""
                 validated = self.validate_mastered_concepts(
                     concepts=record.extraction.mastered_concepts,
                     glossary=glossary,
+                    student_text=student_text,
                 )
-                if validated:
-                    record.extraction.mastered_concepts = validated
+                # Безусловно присваивать validated, даже если validated == [] (чтобы очищать галлюцинированные концепты вне глоссария):
+                record.extraction.mastered_concepts = validated
 
         # 1. Агрегация вероятностей SOLO по шагам диалога
         p1, p2, p3 = self.aggregate_turn_probabilities(record.extraction.turns_probabilities)
@@ -199,6 +208,8 @@ class ThemisMathEngine:
         if not valid_raw_deltas:
             return {
                 "median_delta": 0.0,
+                "raw_median_delta": 0.0,
+                "mu_eff": 0.0,
                 "mad": 0.0,
                 "robust_sigma": self.sigma_min,
                 "sigma_thresholds": {
@@ -220,6 +231,9 @@ class ThemisMathEngine:
         else:
             center_median = raw_median
 
+        # Односторонний референсный центр: пороги и Z-score для положительных расхождений
+        mu_eff = max(0.0, center_median)
+
         # Защита знаменателя от деления на ноль (MAD = 0)
         robust_sigma = max(self.sigma_min, 1.4826 * mad)
 
@@ -238,7 +252,7 @@ class ThemisMathEngine:
                 alerts_count["green"] += 1
                 continue
 
-            z_val = (r.rectified_delta - center_median) / robust_sigma
+            z_val = (r.rectified_delta - mu_eff) / robust_sigma
             r.z_score = round(z_val, 2)
 
             # Классификация положительных аномалий (Undergrading Detection)
@@ -257,12 +271,14 @@ class ThemisMathEngine:
 
         return {
             "median_delta": round(center_median, 2),
+            "raw_median_delta": round(raw_median, 2),
+            "mu_eff": round(mu_eff, 2),
             "mad": round(mad, 2),
             "robust_sigma": round(robust_sigma, 2),
             "sigma_thresholds": {
-                "plus_1_sigma": round(center_median + 1.0 * robust_sigma, 2),
-                "plus_2_sigma": round(center_median + 2.0 * robust_sigma, 2),
-                "plus_3_sigma": round(center_median + 3.0 * robust_sigma, 2),
+                "plus_1_sigma": round(mu_eff + 1.0 * robust_sigma, 2),
+                "plus_2_sigma": round(mu_eff + 2.0 * robust_sigma, 2),
+                "plus_3_sigma": round(mu_eff + 3.0 * robust_sigma, 2),
             },
             "alerts_count": alerts_count,
         }

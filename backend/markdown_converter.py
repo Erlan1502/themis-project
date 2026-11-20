@@ -18,6 +18,7 @@ import re
 import json
 import zipfile
 import tempfile
+import shutil
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -295,11 +296,14 @@ class DocumentToMarkdownConverter:
         """
         ext = os.path.splitext(file_path)[1].lower()
 
+        if ext in (".ppt", ".doc"):
+            raise ValueError("Формат устарел и не поддерживается. Сохраните как .pptx, .docx или .pdf")
+
         if ext == ".pdf":
             return self.convert_pdf(file_path)
-        elif ext in (".pptx", ".ppt"):
+        elif ext == ".pptx":
             return self.convert_pptx(file_path)
-        elif ext in (".docx", ".doc"):
+        elif ext == ".docx":
             return self.convert_docx(file_path)
         elif ext == ".ipynb":
             return self.convert_ipynb(file_path)
@@ -319,11 +323,26 @@ class DocumentToMarkdownConverter:
         Распаковывает ZIP-архив и пакетно конвертирует все поддерживаемые файлы.
         Возвращает список словарей со сконвертированными документами и метаданными.
         """
+        max_zip_size = 25 * 1024 * 1024  # 25 MB
+        if os.path.exists(zip_path) and os.path.getsize(zip_path) > max_zip_size:
+            raise ValueError("Размер ZIP-архива превышает допустимый лимит 25 МБ")
+
         temp_dir = extract_dir or tempfile.mkdtemp(prefix="themis_zip_")
         results = []
 
         try:
             with zipfile.ZipFile(zip_path, "r") as zf:
+                # Проверка размера распакованного содержимого и защита от Zip-Slip
+                total_uncompressed = 0
+                temp_dir_abs = os.path.abspath(temp_dir)
+                for member in zf.infolist():
+                    target_path = os.path.abspath(os.path.join(temp_dir, member.filename))
+                    if not target_path.startswith(temp_dir_abs):
+                        raise ValueError("Zip-Slip vulnerability detected")
+                    total_uncompressed += member.file_size
+                    if total_uncompressed > max_zip_size:
+                        raise ValueError("Суммарный размер распакованного содержимого архива превышает лимит 25 МБ")
+
                 zf.extractall(temp_dir)
 
             supported_exts = {".pdf", ".pptx", ".docx", ".ipynb", ".md", ".txt"}
@@ -361,8 +380,8 @@ class DocumentToMarkdownConverter:
                             logger.warning(f"Не удалось сконвертировать файл {fname} из архива: {e}")
 
         finally:
-            # Если extract_dir не задан извне, временную папку можно сохранить или удалить при завершении
-            pass
+            if not extract_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
         return results
 
